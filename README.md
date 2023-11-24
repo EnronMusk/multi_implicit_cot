@@ -1,4 +1,4 @@
-### **Data Format**
+## **Data Format**
 ---
 The format of training and test datasets follow this format:
 ```
