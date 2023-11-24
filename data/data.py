@@ -3,11 +3,14 @@ import secrets as s
 from torch.utils.data import Dataset
 
 class DatasetGenerator(Dataset):
-
-    def __init__(self, tokenizer, path : str, file_name : str, max_len : int):
+    """
+    Can generate both train and test datasets.
+    Can also generate tokenzied data for model training.
+    """
+    
+    def __init__(self, tokenizer, path : str, max_len : int):
         super().__init__()
         self.path = path
-        self.file_name = file_name
 
     def __generateDataset(self, size : int, type : str) -> pd.DataFrame:
         
@@ -49,7 +52,7 @@ class DatasetGenerator(Dataset):
 
         #Save the dataset
         data = pd.DataFrame(data)
-        file_path = self.path + self.file_name + "_" + type + r".txt"
+        file_path = self.path + type + r"_dataset.txt"
         data.to_csv(file_path, index = False)
         print(f'Generated raw dataset of type {type} saved at {file_path}')
 
