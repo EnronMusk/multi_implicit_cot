@@ -1,4 +1,5 @@
-### Data Format
+### **Data Format**
+---
 The format of training and test datasets follow this format:
 ```
 [input 1a] $$$ [input 1b]||[CoT 1a] $$$ [CoT 1b] #### [output 1a] $$$ [output 1b]
