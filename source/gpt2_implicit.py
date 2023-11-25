@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import logger
 from transformers import GPT2Model, GPT2LMHeadModel
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
 from typing import Optional, Tuple, Union, Dict, Any
@@ -248,7 +249,7 @@ class GPT2ImplicitModel(GPT2Model):
                     hidden_states[:, positions_to_substitute[0]] = states_to_substitute[i]
                 else:
                     for batch_id in range(batch_size):
-                        hidden_states[batch_id, positions_to_substitut[batch_id]] = states_to_substitute[i][batch_id]
+                        hidden_states[batch_id, positions_to_substitute[batch_id]] = states_to_substitute[i][batch_id]
 
 
             if self.gradient_checkpointing and self.training:
@@ -432,7 +433,7 @@ class GPT2LMHeadImplicitModel(GPT2LMHeadModel):
             shift_logits = lm_logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
             # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
+            loss_fct = nn.CrossEntropyLoss()
             loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
 
         if not return_dict:

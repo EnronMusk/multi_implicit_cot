@@ -21,9 +21,9 @@ from data.data import DatasetHandler
 from data.data import CoTDataCollator
 from data.data import extractAnswer
 
-from configurations import TeacherConfig
-from utils import get_sep_position, DoubleEOSStoppingCriteria, DoubleEOSLogitsProcessor
-from gpt2_implicit import GPT2LMHeadImplicitModel
+from source.configurations import TeacherConfig
+from source.utils import get_sep_position, DoubleEOSStoppingCriteria, DoubleEOSLogitsProcessor
+from source.gpt2_implicit import GPT2LMHeadImplicitModel
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -184,8 +184,8 @@ class Teacher(nn.Module):
         torch.save(state_dict, os.path.join(save_directory, 'state_dict.bin'))
 
     @torch.no_grad() #Freeze gradients.
-    def evaluate(dataloader, tokenizer, ctx, teacher, max_new_tokens):
-        teacher.eval()
+    def evaluate(self, dataloader, tokenizer, ctx, max_new_tokens):
+        self.base_model.eval() #Freeze loss function, gradients etc.
 
         total_instances = 0
         total_tokens = 0
@@ -193,6 +193,7 @@ class Teacher(nn.Module):
         total_correct_tokens = 0
         total_loss = 0
 
+        iteration = 0
         for batch in tqdm.tqdm(dataloader):
             input_ids_all = batch['input_ids_all'].to(device)
             labels = batch['labels_all'].to(device)
@@ -201,20 +202,20 @@ class Teacher(nn.Module):
             input_ids = input_ids_all[:, :sep_positions.max()+1]
             batch_size = input_ids.shape[0]
             with ctx:
-                outputs = teacher.compute_loss(input_ids=input_ids_all, labels=labels)
+                outputs = self.computeLoss(input_ids=input_ids_all, labels=labels)
             total_loss += outputs.total_loss.item()
             total_correct_tokens += outputs.total_correct.item()
             total_tokens += outputs.total_tokens
             total_instances += batch_size
 
             # Generate
-            beam_output = teacher.generate(
+            beam_output = self.generate(
                 input_ids=input_ids,
                 max_new_tokens=max_new_tokens,
             )
-            # Evaluate
-            #import pdb; pdb.set_trace()
+            j = 0
             for i, (input_ids_all_i, beam_output_i) in enumerate(zip(input_ids_all, beam_output)):
+                j+=1 # to limit spam.
                 sep_position = sep_positions[i].item()
                 tgt = input_ids_all_i[sep_position+1:]
                 tgt_text = tokenizer.decode(tgt, skip_special_tokens=True)
@@ -223,7 +224,7 @@ class Teacher(nn.Module):
                 pred_ans = extractAnswer(pred_text)
                 if ans == pred_ans:
                     total_correct += 1
-                if i == 0:
+                if i == 0 and j <= 10:
                     print (f'Input: {tokenizer.decode(input_ids_all_i[:sep_position], skip_special_tokens=True)}')
                     print (f'Target: {tgt_text}')
                     print (f'Predicted: {pred_text}')
@@ -239,9 +240,8 @@ class Teacher(nn.Module):
         batch_size = 32
         eta = 5e-5
         max_grad_norm = 1
-        base_model = 'gpt2'
         max_new_tokens = 128
-        epochs = 50
+        epochs = 1
 
 
 
@@ -264,34 +264,29 @@ class Teacher(nn.Module):
         extra_args = dict(fused=True) if use_fused else dict()
         optimizer = torch.optim.AdamW(trainable_params, lr = eta, **extra_args)
 
-        teacher.train() #Put model in training mode
+        self.base_model.train() #Put model in training mode
 
         # Train
         iteration = 0
-        for epoch in range(epochs):
+        for batch in tqdm.tqdm(train_dataloader):
+            input_ids = batch['input_ids_all'].to(device)
+            labels = batch['labels_all'].to(device)
+            with ctx:
+                outputs = self.computeLoss(input_ids=input_ids, labels=labels)
+            loss = outputs.loss
+            token_accuracy = outputs.token_accuracy.item()
 
-            print(f"Epoch {epoch}")
-            teacher.train() #Put model in training mode
+            loss.backward() #Calculates graidents
+            torch.nn.utils.clip_grad_norm_(trainable_params, max_grad_norm)
+            optimizer.step() #Subtracts gradients.
+            optimizer.zero_grad() #Set gradients to zero.
 
-            for batch in tqdm.tqdm(train_dataloader):
-                input_ids = batch['input_ids_all'].to(device)
-                labels = batch['labels_all'].to(device)
-                with ctx:
-                    outputs = teacher.compute_loss(input_ids=input_ids, labels=labels)
-                loss = outputs.loss
-                token_accuracy = outputs.token_accuracy.item()
+            ppl = loss.exp().item()
+            if iteration % 250 == 0:
+                print (f"Step: {iteration}. PPL: {ppl:.6f}. Token Accuracy: {token_accuracy:.6f}")
+            iteration += 1
 
-                loss.backward() #Calculates graidents
-                torch.nn.utils.clip_grad_norm_(trainable_params, max_grad_norm)
-                optimizer.step() #Subtracts gradients.
-                optimizer.zero_grad() #Set gradients to zero.
+        accuracy, token_accuracy, ppl = self.evaluate(val_dataloader, tokenizer, ctx, max_new_tokens)
 
-                ppl = loss.exp().item()
-                if iteration % 250 == 0:
-                    print (f"Step: {iteration}. PPL: {ppl}. Token Accuracy: {token_accuracy}")
-                iteration += 1
-
-            accuracy, token_accuracy, ppl = self.evaluate(val_dataloader, tokenizer, ctx, teacher, max_new_tokens)
-
-            print (f'Val. PPL: {ppl}; Accuracy: {accuracy}; Token Accuracy: {token_accuracy}.')
-            teacher.save_pretrained(os.path.join(train_handler.path, f'checkpoint_{epoch}'))
+        print (f'Val. PPL: {ppl:.6f}; Accuracy: {accuracy:.6f}; Token Accuracy: {token_accuracy:.6f}.')
+        teacher.save_pretrained(os.path.join(train_handler.path, f'teacher_model'))
