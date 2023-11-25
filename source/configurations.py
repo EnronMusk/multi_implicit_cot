@@ -1,4 +1,5 @@
 from transformers import PretrainedConfig
+import os
 
 class EmulatorConfig(PretrainedConfig):
     def __init__(
@@ -38,3 +39,9 @@ class TeacherConfig(PretrainedConfig):
         self.base_model = base_model
         self.tokenizer_name = tokenizer_name
         super().__init__(**kwargs)
+
+def save_model(model, tokenizer, model_dir):
+    print ('saving', model_dir)
+    os.makedirs(model_dir, exist_ok=True)
+    model.save_pretrained(model_dir)
+    tokenizer.save_pretrained(model_dir)
