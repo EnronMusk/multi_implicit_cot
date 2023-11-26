@@ -1,5 +1,5 @@
 import torch
-import matplotlib as plt
+import matplotlib.pyplot as plt
 from transformers import StoppingCriteria, LogitsProcessor
 
 def get_sep_position(input_ids, sep_id, skip=0):
@@ -47,22 +47,24 @@ class DoubleEOSLogitsProcessor(LogitsProcessor):
             scores[done, self.eos_token_id] = 0
         return scores
     
-def createAccuracyAndLossPlots(train_losses, train_accs, test_accs):
+def createAccuracyPlot(train_accs):
+
+    #Plots training summary results on accuracy
+    plt.plot(train_accs, color='red', label='train')
+    plt.grid(alpha=0.3)
+    plt.ylabel('accuracy',fontweight='bold')
+    plt.xlabel('batch',fontweight='bold')
+    plt.title("Training and Test Accuracy Distribution")
+    plt.legend()
+    plt.show()
+
+def createLossPlot(train_losses):
+    
     #Plots training summary results on loss function
     plt.plot(train_losses, color='red', label='train')
     plt.grid(alpha=0.3)
     plt.ylabel('loss',fontweight='bold')
     plt.xlabel('batch',fontweight='bold')
     plt.title("Training Loss Distribution")
-    plt.legend()
-    plt.show()
-
-    #Plots training summary results on accuracy
-    plt.plot(train_accs, color='red', label='train')
-    plt.plot(test_accs, color='black', label='test')
-    plt.grid(alpha=0.3)
-    plt.ylabel('accuracy',fontweight='bold')
-    plt.xlabel('batch',fontweight='bold')
-    plt.title("Training and Test Accuracy Distribution")
     plt.legend()
     plt.show()

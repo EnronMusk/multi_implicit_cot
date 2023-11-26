@@ -13,6 +13,8 @@ class EmulatorConfig(PretrainedConfig):
         max_grad_norm = 1,
         max_new_tokens = 128,
         epochs = 1,
+        delta = 'dynamic', #Here we assign the dynamic delta paramter for variable length CoT
+        subset = 'diagonal',
         **kwargs,
     ):
         self.base_model = base_model
@@ -24,6 +26,7 @@ class EmulatorConfig(PretrainedConfig):
         self.max_grad_norm = max_grad_norm
         self.max_new_tokens = max_new_tokens
         self.epochs = epochs
+        self.delta = delta
         super().__init__(**kwargs)
 
 class StudentConfig(PretrainedConfig):

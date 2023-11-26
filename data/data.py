@@ -1,6 +1,5 @@
 import pandas as pd
 import secrets as s
-import numpy as np
 
 from torch.utils.data import Dataset
 from dataclasses import dataclass
@@ -8,6 +7,7 @@ from torch.nn.utils.rnn import pad_sequence
 
 import torch
 import copy
+
 
 def extractAnswer(text):
     split_pattern = '####'
@@ -42,19 +42,19 @@ class DatasetHandler(Dataset):
         self.max_len = max_len
         self.type = type
 
-    def generateDataset(self, size : int) -> None:
+    def generateDataset(self, size: int = 1, a : int = None, b : int = None, c : int = None, d : int = None) -> None:
         '''
         Generates the dataset of a given size and type.
+        @a,b,c,d are for a custom entry, if we want a custom prediction.
         '''
         data = []
         delimiter_input = '||'
         delimter_output = ' #### '
         delmiter_problem = ' $$$ '
 
-        def __generateProblem() -> None:
-
-            i = s.randbelow(100)
-            j = s.randbelow(100)
+        def __generateProblem(i : int, j : int) -> None:
+            if i is None: i = s.randbelow(100)
+            if j is None: j = s.randbelow(100)
 
             j_digit_1 = j // 10
             j_digit_2 = j % 10
@@ -84,8 +84,8 @@ class DatasetHandler(Dataset):
         
         #Generate entries here by assembling each problem into a full entry.
         for _ in range(size):
-            problem_1 = __generateProblem()
-            problem_2 = __generateProblem()
+            problem_1 = __generateProblem(a,b)
+            problem_2 = __generateProblem(c,d)
 
             entry = problem_1[0] + delmiter_problem + problem_2[0] + delimiter_input + problem_1[1] + delmiter_problem + problem_2[1] + delimter_output + problem_1[2] + delmiter_problem + problem_2[2]
 
@@ -96,6 +96,7 @@ class DatasetHandler(Dataset):
         file_path = self.path + r"\data\raw_" + self.type + r"_dataset.txt"
         data.to_csv(file_path, index = False, header = False)
         print(f'Generated raw {self.type} dataset saved at {file_path} of size {size}.')
+
         self.__tokenizeDataset() #Automatically tokenize the dataset.
 
     def __tokenizeDataset(self) -> Dataset:

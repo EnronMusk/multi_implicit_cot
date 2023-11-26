@@ -2,6 +2,8 @@ import os
 import sys
 import math
 import matplotlib as plt
+import warnings
+warnings.filterwarnings('ignore')
 
 #For safe imports
 file_directory = os.getcwd()
@@ -9,6 +11,7 @@ parent_directory = os.path.dirname(file_directory)
 sys.path.insert(False, parent_directory)
 
 import torch
+import numpy as np
 import torch.nn as nn
 from torch.nn import CrossEntropyLoss
 import tqdm
@@ -23,7 +26,7 @@ from data.data import CoTDataCollator
 from data.data import extractAnswer
 
 from source.configurations import TeacherConfig
-from source.utils import get_sep_position, DoubleEOSStoppingCriteria, DoubleEOSLogitsProcessor, createAccuracyAndLossPlots
+from source.utils import get_sep_position, DoubleEOSStoppingCriteria, DoubleEOSLogitsProcessor, createAccuracyPlot, createLossPlot
 from source.gpt2_implicit import GPT2LMHeadImplicitModel
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -68,7 +71,7 @@ class Teacher(nn.Module):
             positions_to_extract_per_layer[batch_id] = positions_to_extract
         return positions_to_extract_per_layer
 
-    def extractStates(self, input_ids, delta, subset='diagonal'):
+    def extractStates(self, input_ids, delta, subset='diagonal') -> list:
         if delta.isnumeric():
             delta = int(delta)
         hidden_size = self.hidden_size
@@ -84,7 +87,7 @@ class Teacher(nn.Module):
         hidden_states = outputs.hidden_states[:-1]
 
         # Compute the positions to extract teacher states (t_l in the paper)
-        positions_to_extract_per_layer = self.compute_positions_to_extract_per_layer(subset, delta, first_sep_positions, second_sep_positions)
+        positions_to_extract_per_layer = self.computePositionsToExtractPerLayer(subset, delta, first_sep_positions, second_sep_positions)
 
         # Extract teacher states
         teacher_states_extracted = []
@@ -124,7 +127,7 @@ class Teacher(nn.Module):
         outputs.total_tokens = total_tokens
         return outputs
 
-    def generate(self, input_ids, max_new_tokens=512, num_beams=1, stop_on_two_eos=True):
+    def __generate(self, input_ids, max_new_tokens=512, num_beams=1, stop_on_two_eos=True) -> list:
         sep_positions = get_sep_position(input_ids, self.tokenizer.eos_token_id)
         batch_size = input_ids.shape[0]
 
@@ -178,34 +181,32 @@ class Teacher(nn.Module):
         model.load_state_dict(state_dict)
         return model
 
-    def save_pretrained(self, save_directory):
+    def save_pretrained(self, save_directory) -> None:
         print (f'Saving to {save_directory}')
         self.config.save_pretrained(save_directory)
         state_dict = self.state_dict()
         torch.save(state_dict, os.path.join(save_directory, 'state_dict.bin'))
 
     @torch.no_grad() #Freeze gradients.
-    def evaluate(self, dataloader : DataLoader, tokenizer : AutoTokenizer, ctx, max_new_tokens : int, quietly : bool):
-        '''\
-        Calculates accuracy metrics on test data.
-        @quietly mutes printing on evaluations and shortens test data set to save resources.
+    def evaluate(self, dataloader : DataLoader, ctx):
+        '''
+        Calculates accuracy metrics on test data and can also generate predictions.
         '''
         self.base_model.eval() #Freeze loss function, gradients etc.
 
         self.total_instances = 0
         self.total_tokens = 0
-        self.total_correct = 0
         self.total_correct_tokens = 0
+        self.total_correct = 0
         self.total_loss = 0
 
-        self.__iteration = 0
         self.__sub_iteration = 0
 
-        def __batchEvaluation(batch):
+        for batch in tqdm.tqdm(dataloader):
             input_ids_all = batch['input_ids_all'].to(device)
             labels = batch['labels_all'].to(device)
             # Remove answer part
-            sep_positions = get_sep_position(input_ids_all, tokenizer.eos_token_id)
+            sep_positions = get_sep_position(input_ids_all, self.tokenizer.eos_token_id)
             input_ids = input_ids_all[:, :sep_positions.max()+1]
             batch_size = input_ids.shape[0]
             with ctx:
@@ -216,50 +217,61 @@ class Teacher(nn.Module):
             self.total_instances += batch_size
 
             # Generate
-            beam_output = self.generate(
+            beam_output = self.__generate(
                 input_ids=input_ids,
-                max_new_tokens=max_new_tokens,
+                max_new_tokens=self.config.max_new_tokens,
             )
             for i, (input_ids_all_i, beam_output_i) in enumerate(zip(input_ids_all, beam_output)):
                 self.__sub_iteration += 1
-                self.__iteration += 1
-                if quietly and self.__iteration == 10: break #Cancel batches early to save resources when doing quiet evaluations for test data.
-
                 sep_position = sep_positions[i].item()
                 tgt = input_ids_all_i[sep_position+1:]
-                tgt_text = tokenizer.decode(tgt, skip_special_tokens=True)
+                tgt_text = self.tokenizer.decode(tgt, skip_special_tokens=True)
                 ans = extractAnswer(tgt_text)
-                pred_text = tokenizer.decode(beam_output_i[0][sep_position+1:], skip_special_tokens=True)
+                pred_text = self.tokenizer.decode(beam_output_i[0][sep_position+1:], skip_special_tokens=True)
                 pred_ans = extractAnswer(pred_text)
                 if ans == pred_ans:
                     self.total_correct += 1
 
-                if i == 0 and self.__sub_iteration <= 10 and not quietly: # to limit spam and block if quiet for test data.
-                    print (f'Input: {tokenizer.decode(input_ids_all_i[:sep_position], skip_special_tokens=True)}')
+                if i == 0 and self.__sub_iteration <= 100: # to limit spam of prediction examples.
+                    print (f'Input: {self.tokenizer.decode(input_ids_all_i[:sep_position], skip_special_tokens=True)}')
                     print (f'Target: {tgt_text}')
                     print (f'Predicted: {pred_text}')
                     print ('')
-            accuracy = self.total_correct / self.total_instances
-            token_accuracy = self.total_correct_tokens / self.total_tokens
-            loss = self.total_loss / self.total_tokens
-            ppl = math.exp(loss)
-            return accuracy, token_accuracy, ppl
 
-        #Check if we want to evaluate quiety or not.
-        if quietly:
-            for batch in dataloader:
-                __batchEvaluation(batch)
-        else:
-            for batch in tqdm.tqdm(dataloader):
-                __batchEvaluation(batch)
+        accuracy = self.total_correct / self.total_instances
+        token_accuracy = self.total_correct_tokens / self.total_tokens
+        loss = self.total_loss / self.total_tokens
+        ppl = math.exp(loss)
+        return accuracy, token_accuracy, ppl
     
-    def train(self, train_handler : DatasetHandler, test_handler : DatasetHandler) -> None:
+    def predict(self, custom_data_handler : DatasetHandler) -> None:
+        '''
+        Used for custom test cases for fun. You can create custom test cases using the generateDataset using a DatasetHandler.
+        '''
 
         dtype = 'float32'
         ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
         ctx = torch.amp.autocast(device_type='cuda', dtype=ptdtype)
 
-        # Create Student 
+        teacher = self.to(device).to(ptdtype)
+        # Load data
+        tokenizer = teacher.tokenizer
+        collate_fn = CoTDataCollator(tokenizer)
+        custom_data_handler = DataLoader(custom_data_handler, batch_size = self.config.batch_size, collate_fn = collate_fn, shuffle=False)
+
+        self.evaluate(custom_data_handler, ctx)
+
+
+    def train(self, train_handler : DatasetHandler, test_handler : DatasetHandler, limit : float) -> None:
+        '''
+        Trains the model and automatically evaluates. 
+        @limit hard caps the desired accuracy to stop training early if the threshold is meet.
+        '''
+        dtype = 'float32'
+        ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
+        ctx = torch.amp.autocast(device_type='cuda', dtype=ptdtype)
+
+        # Create Teacher 
         teacher = self.to(device).to(ptdtype)
 
         # Load data
@@ -279,17 +291,24 @@ class Teacher(nn.Module):
         train_losses = []
 
         train_accs = []
-        test_accs = []
 
         # Train
         iteration = 0
         for batch in tqdm.tqdm(train_dataloader):
+            self.base_model.train()
+        
+
             input_ids = batch['input_ids_all'].to(device)
             labels = batch['labels_all'].to(device)
             with ctx:
                 outputs = self.computeLoss(input_ids=input_ids, labels=labels)
             loss = outputs.loss
             token_accuracy = outputs.token_accuracy.item()
+
+            #Stop training early to save resources.
+            if token_accuracy > limit:
+                print(f"Accuracy limit reached, stopping training at training accuracy: {token_accuracy:.6f}.")
+                break
 
             loss.backward() #Calculates graidents
             torch.nn.utils.clip_grad_norm_(trainable_params, self.config.max_grad_norm)
@@ -298,20 +317,16 @@ class Teacher(nn.Module):
 
             ppl = loss.exp().item()
             if iteration % 250 == 0:
-                print (f"Step: {iteration}. PPL: {ppl:.6f}. Token Accuracy: {token_accuracy:.6f}")
+                print (f"Step: {iteration}. PPL: {ppl:.6f}. Training Accuracy: {token_accuracy:.6f}")
             iteration += 1
 
             train_losses.append(loss.item())
             train_accs.append(token_accuracy)
 
-            #Lets grab some current test data performance to graph.
-            accuracy, token_accuracy, ppl = self.evaluate(val_dataloader, tokenizer, ctx, self.config.max_new_tokens, quietly = True)
-            test_accs.append(accuracy)
+        accuracy, token_accuracy, ppl = self.evaluate(val_dataloader, ctx)
 
-
-        accuracy, token_accuracy, ppl = self.evaluate(val_dataloader, tokenizer, ctx, self.config.max_new_tokens, quietly = False)
-
-        print (f'Val. PPL: {ppl:.6f}; Accuracy: {accuracy:.6f}; Token Accuracy: {token_accuracy:.6f}.')
+        print (f'Perplexitity: {ppl:.6f}; Accuracy: {accuracy:.6f}; Training Accuracy: {token_accuracy:.6f}.')
         teacher.save_pretrained(os.path.join(train_handler.path, f'teacher_model'))
 
-        createAccuracyAndLossPlots(train_losses, train_accs, test_accs) #Plots the lsos and accuracy information over batches, so we can gage training performance/overfitting.
+        createAccuracyPlot(train_accs) #Plots the lsos and accuracy information over batches, so we can gage training performance/overfitting.
+        createLossPlot(train_losses) 
