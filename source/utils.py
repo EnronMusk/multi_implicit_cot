@@ -54,12 +54,12 @@ def createAccuracyPlot(train_accs):
     plt.grid(alpha=0.3)
     plt.ylabel('accuracy',fontweight='bold')
     plt.xlabel('batch',fontweight='bold')
-    plt.title("Training and Test Accuracy Distribution")
+    plt.title("Training Accuracy Distribution")
     plt.legend()
     plt.show()
 
 def createLossPlot(train_losses):
-    
+
     #Plots training summary results on loss function
     plt.plot(train_losses, color='red', label='train')
     plt.grid(alpha=0.3)

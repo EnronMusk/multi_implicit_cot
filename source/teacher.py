@@ -194,11 +194,10 @@ class Teacher(nn.Module):
         '''
         self.base_model.eval() #Freeze loss function, gradients etc.
 
-        self.total_instances = 0
-        self.total_tokens = 0
-        self.total_correct_tokens = 0
-        self.total_correct = 0
-        self.total_loss = 0
+        total_instances = 0
+        total_tokens = 0
+        total_correct_tokens = 0
+        total_loss = 0
 
         self.__sub_iteration = 0
 
@@ -211,10 +210,10 @@ class Teacher(nn.Module):
             batch_size = input_ids.shape[0]
             with ctx:
                 outputs = self.computeLoss(input_ids=input_ids_all, labels=labels)
-            self.total_loss += outputs.total_loss.item()
-            self.total_correct_tokens += outputs.total_correct.item()
-            self.total_tokens += outputs.total_tokens
-            self.total_instances += batch_size
+            total_loss += outputs.total_loss.item()
+            total_correct_tokens += outputs.total_correct.item()
+            total_tokens += outputs.total_tokens
+            total_instances += batch_size
 
             # Generate
             beam_output = self.__generate(
@@ -316,17 +315,20 @@ class Teacher(nn.Module):
             optimizer.zero_grad() #Set gradients to zero.
 
             ppl = loss.exp().item()
-            if iteration % 250 == 0:
+
+            #We want 10 updates on steps, accuracy and loss.
+            if iteration % math.floor(len(train_dataloader)/10) == 0:
                 print (f"Step: {iteration}. PPL: {ppl:.6f}. Training Accuracy: {token_accuracy:.6f}")
             iteration += 1
 
             train_losses.append(loss.item())
             train_accs.append(token_accuracy)
-
+            
+        print (f"Evaluating test dataset now...")
         accuracy, token_accuracy, ppl = self.evaluate(val_dataloader, ctx)
 
-        print (f'Perplexitity: {ppl:.6f}; Accuracy: {accuracy:.6f}; Training Accuracy: {token_accuracy:.6f}.')
-        teacher.save_pretrained(os.path.join(train_handler.path, f'teacher_model'))
+        print (f'Perplexitity: {ppl:.6f}; Test Accuracy: {accuracy:.6f}; Training Accuracy: {token_accuracy:.6f}.')
+        teacher.save_pretrained(os.path.join(train_handler.path+r'\models\teacher'))
 
-        createAccuracyPlot(train_accs) #Plots the lsos and accuracy information over batches, so we can gage training performance/overfitting.
+        createAccuracyPlot(train_accs) #Plots the lsos and accuracy information over batches, so we can gage training performance.
         createLossPlot(train_losses) 

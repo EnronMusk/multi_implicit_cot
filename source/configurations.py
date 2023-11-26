@@ -1,7 +1,7 @@
 from transformers import PretrainedConfig
 import os
 
-class EmulatorConfig(PretrainedConfig):
+class ThoughtEmulatorConfig(PretrainedConfig):
     def __init__(
         self,
         base_model='gpt2',
@@ -27,9 +27,10 @@ class EmulatorConfig(PretrainedConfig):
         self.max_new_tokens = max_new_tokens
         self.epochs = epochs
         self.delta = delta
+        self.subset = subset
         super().__init__(**kwargs)
 
-class StudentConfig(PretrainedConfig):
+class MindReadingEmulatorConfig(PretrainedConfig):
     def __init__(
         self,
         base_model='gpt2',
@@ -40,6 +41,8 @@ class StudentConfig(PretrainedConfig):
         max_grad_norm = 1,
         max_new_tokens = 128,
         epochs = 1,
+        delta = 'dynamic', #Here we assign the dynamic delta paramter for variable length CoT
+        subset = 'diagonal',
         **kwargs,
     ):
         self.base_model = base_model
@@ -50,6 +53,8 @@ class StudentConfig(PretrainedConfig):
         self.max_grad_norm = max_grad_norm
         self.max_new_tokens = max_new_tokens
         self.epochs = epochs
+        self.delta = delta
+        self.subset = subset
         super().__init__(**kwargs)
 
 class TeacherConfig(PretrainedConfig):
