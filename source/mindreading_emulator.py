@@ -26,7 +26,7 @@ from data.data import DatasetHandler
 from data.data import CoTDataCollator
 from data.data import extractAnswer
 
-from source.configurations import MindReaderEmulatorConfig
+from source.configurations import MindReadingEmulatorConfig
 from source.utils import get_sep_position, DoubleEOSStoppingCriteria, DoubleEOSLogitsProcessor, createAccuracyPlot, createLossPlot
 from source.gpt2_implicit import GPT2LMHeadImplicitModel
 
@@ -37,8 +37,8 @@ torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 logging.disable(logging.WARNING) # disable WARNING, INFO and DEBUG logging everywhere
 
-class MindReaderEmulator(nn.Module):
-    def __init__(self, config : MindReaderEmulatorConfig, teacher : Teacher):
+class MindReadingEmulator(nn.Module):
+    def __init__(self, config : MindReadingEmulatorConfig, teacher : Teacher):
         super().__init__()
         self.config = config
         self.base_model = GPT2LMHeadImplicitModel.from_pretrained(config.base_model)
@@ -62,14 +62,15 @@ class MindReaderEmulator(nn.Module):
                 input_ids=input_ids, \
                 positions_to_substitute=positions_to_substitute, \
                 states_to_substitute=teacher_states, \
-                output_hidden_states=output_hidden_states)
+                output_hidden_states=output_hidden_states, \
+                )
         return outputs
 
     def computeLoss(self, input_ids, labels, teacher_states):
         #import pdb; pdb.set_trace()
         sep_positions = get_sep_position(input_ids, self.tokenizer.eos_token_id)
         # First, project teacher states
-        teacher_states = [self.mlps[l](teacher_states[l]) for l in range(len(teacher_states))]
+        teacher_states = [self.verticle_model[l](teacher_states[l]) for l in range(len(teacher_states))]
 
         # Forward while substituting teacher states
         outputs = self.forward(input_ids, sep_positions, teacher_states)
@@ -95,8 +96,8 @@ class MindReaderEmulator(nn.Module):
 
     @classmethod
     def from_pretrained(self, pretrained_path, teacher : Teacher):
-        config = MindReaderEmulatorConfig.from_pretrained(pretrained_path)
-        model = MindReaderEmulator(config, teacher)
+        config = MindReadingEmulatorConfig.from_pretrained(pretrained_path)
+        model = MindReadingEmulator(config, teacher)
         state_dict = torch.load(os.path.join(pretrained_path, 'state_dict.bin'))
         model.load_state_dict(state_dict)
         return model
@@ -107,8 +108,31 @@ class MindReaderEmulator(nn.Module):
         state_dict = self.state_dict()
         torch.save(state_dict, os.path.join(save_directory, 'state_dict.bin'))
 
+    def __generate(self, input_ids, teacher_states, max_new_tokens=512, num_beams=1):
+        sep_positions = get_sep_position(input_ids, self.tokenizer.eos_token_id)
+        batch_size = input_ids.shape[0]
+        beam_output = []
+        # First, project teacher states
+        teacher_states = [self.verticle_model[l](teacher_states[l]) for l in range(len(teacher_states))]
+        for i in range(batch_size):
+            input_ids_i = input_ids[i:i+1]
+            sep_positions_i = sep_positions[i:i+1]
+            input_ids_i = input_ids_i[:, :sep_positions_i+1]
+            beam_output_i = self.base_model.generate(
+                input_ids=input_ids_i,
+                max_new_tokens=max_new_tokens,
+                num_beams=num_beams,
+                early_stopping=True,
+                num_return_sequences=1,
+                positions_to_substitute=sep_positions_i.repeat_interleave(num_beams, dim=0),
+                states_to_substitute=[z[i:i+1].repeat_interleave(num_beams, dim=0) for z in teacher_states],
+                mode='forward_student',
+            )
+            beam_output.append(beam_output_i)
+        return beam_output
+    
     @torch.no_grad() #Freeze gradients.
-    def evaluate(self, dataloader, tokenizer, ctx, teacher, student):
+    def evaluate(self, dataloader : DataLoader, ctx,):
         '''
         Calculates accuracy metrics on test data.
         '''
@@ -126,10 +150,12 @@ class MindReaderEmulator(nn.Module):
             input_ids_all = batch['input_ids_all'].to(device)
             input_ids_nocot = batch['input_ids_nocot'].to(device)
             labels_nocot = batch['labels_nocot'].to(device)
+            input_ids_only = batch['input_ids_only'].to(device)
+
             batch_size = input_ids_nocot.shape[0]
             with ctx:
-                teacher_states = teacher.extract_states(input_ids=input_ids_all, delta=self.config.delta, subset=self.config.subset)
-                outputs = student.compute_loss(input_ids=input_ids_nocot, labels=labels_nocot, teacher_states=teacher_states)
+                teacher_states = self.teacher.extractStates(input_ids=input_ids_all, delta=self.config.delta, subset=self.config.subset)
+                outputs = self.computeLoss(input_ids=input_ids_nocot, labels=labels_nocot, teacher_states=teacher_states)
                 loss = outputs.loss
                 token_accuracy = outputs.token_accuracy.item()
             total_loss += outputs.total_loss.item()
@@ -139,25 +165,26 @@ class MindReaderEmulator(nn.Module):
 
             # Generate
             with ctx:
-                beam_output = student.generate(
+                beam_output = self.__generate(
                     input_ids=input_ids_nocot,
                     teacher_states=teacher_states,
                     max_new_tokens=self.config.max_new_tokens,
                 )
 
             # Evaluate
-            sep_positions = get_sep_position(input_ids_all, tokenizer.eos_token_id)
-            for i, (input_ids_all_i, beam_output_i) in enumerate(zip(input_ids_all, beam_output)):
+            sep_positions = get_sep_position(input_ids_all, self.tokenizer.eos_token_id)
+            for i, (input_ids_all_i, beam_output_i) in enumerate(zip(labels_nocot, beam_output)):
                 sep_position = sep_positions[i].item()
                 tgt = input_ids_all_i[sep_position+1:]
-                tgt_text = tokenizer.decode(tgt, skip_special_tokens=True)
+                tgt_text = self.tokenizer.decode(tgt, skip_special_tokens=True)
                 ans = extractAnswer(tgt_text)
-                pred_text = tokenizer.decode(beam_output_i[0][sep_position+1:], skip_special_tokens=True)
+                pred_text = self.tokenizer.decode(beam_output_i[0][sep_position+1:], skip_special_tokens=True)
                 pred_ans = extractAnswer(pred_text)
                 if ans == pred_ans:
                     total_correct += 1
                 if i == 0 and self.__sub_iteration <= 100: # to limit spam of prediction examples.
-                    print (f'Input: {self.tokenizer.decode(input_ids_all_i[:sep_position], skip_special_tokens=True)}')
+                    print (f'Input H. Layer 1, V. Layer 1, first 9 states:')
+                    print(np.round(teacher_states[0][0][:9].cpu().numpy(), decimals=4))
                     print (f'Target: {tgt_text}')
                     print (f'Predicted: {pred_text}')
                     print ('')
@@ -169,28 +196,20 @@ class MindReaderEmulator(nn.Module):
     
     def predict(self, custom_data_handler : DatasetHandler) -> None:
         '''
-        Used for custom test cases for fun. You can create custom test cases using the generateDataset using a DatasetHandler. Predicts 10 states.
+        Used for custom test cases for fun. You can create custom test cases using the generateDataset using a DatasetHandler.
         '''
-        self.base_model.eval()
 
+        dtype = 'float32'
+        ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
+        ctx = torch.amp.autocast(device_type='cuda', dtype=ptdtype)
+
+        teacher = self.to(device).to(ptdtype)
         # Load data
-        tokenizer = self.teacher.tokenizer
+        tokenizer = teacher.tokenizer
         collate_fn = CoTDataCollator(tokenizer)
         custom_data_handler = DataLoader(custom_data_handler, batch_size = self.config.batch_size, collate_fn = collate_fn, shuffle=False)
 
-
-        for batch in tqdm.tqdm(custom_data_handler):
-            input_ids_cot = batch['input_ids_cot'].to(device)
-
-            teacher_states = self.teacher.extractStates(input_ids=input_ids_cot, delta=self.config.delta, subset=self.config.subset)
-            emulated_teacher_states = self.forward(input_ids=input_ids_cot, requires_backward=True)
-
-            #We print some of the states to compare.
-            print (f'Target H. Layer 1, V. Layer 1, first 9 states:')
-            print(np.round(teacher_states[0][0][:9].cpu().numpy(), decimals=4))
-            print (f'Predicted H. Layer 1, V. Layer 1, first 9 states: ')
-            print(np.round(emulated_teacher_states[0][0][:9].cpu().detach().numpy(), decimals=4))
-
+        self.evaluate(custom_data_handler, ctx)
 
 
 
@@ -223,7 +242,6 @@ class MindReaderEmulator(nn.Module):
 
         for p in self.teacher.parameters():
             p.requires_grad = False
-        self.teacher.eval() #Freeze the teacher model
 
         train_losses = []
 
@@ -258,14 +276,14 @@ class MindReaderEmulator(nn.Module):
 
             #We want 10 updates on steps, accuracy and loss.
             if iteration % math.floor(len(train_dataloader)/10) == 0:
-                print (f"Step: {iteration}. Loss: {loss:.6f}. Quasi Training Accuracy: {quasi_train_accuracy:.6f}.")
+                print (f"Step: {iteration}. Loss: {loss:.6f}. Training Accuracy: {token_accuracy:.6f}.")
             iteration += 1
 
             train_losses.append(loss.item())
             train_accs.append(token_accuracy)
 
         print (f"Evaluating test dataset now...")
-        accuracy, loss = self.evaluate(val_dataloader, ctx)
+        accuracy, token_accuracy, ppl = self.evaluate(val_dataloader, ctx)
 
         print (f'Perplexitity: {ppl:.6f}; Test Accuracy: {accuracy:.6f}; Training Accuracy: {token_accuracy:.6f}.')
         emulator.save_pretrained(os.path.join(train_handler.path+r'\models\mindreading_emulator'))

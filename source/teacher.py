@@ -197,6 +197,7 @@ class Teacher(nn.Module):
         total_instances = 0
         total_tokens = 0
         total_correct_tokens = 0
+        total_correct = 0
         total_loss = 0
 
         self.__sub_iteration = 0
@@ -229,7 +230,7 @@ class Teacher(nn.Module):
                 pred_text = self.tokenizer.decode(beam_output_i[0][sep_position+1:], skip_special_tokens=True)
                 pred_ans = extractAnswer(pred_text)
                 if ans == pred_ans:
-                    self.total_correct += 1
+                    total_correct += 1
 
                 if i == 0 and self.__sub_iteration <= 100: # to limit spam of prediction examples.
                     print (f'Input: {self.tokenizer.decode(input_ids_all_i[:sep_position], skip_special_tokens=True)}')
@@ -237,9 +238,9 @@ class Teacher(nn.Module):
                     print (f'Predicted: {pred_text}')
                     print ('')
 
-        accuracy = self.total_correct / self.total_instances
-        token_accuracy = self.total_correct_tokens / self.total_tokens
-        loss = self.total_loss / self.total_tokens
+        accuracy = total_correct / total_instances
+        token_accuracy = total_correct_tokens / total_tokens
+        loss = total_loss / total_tokens
         ppl = math.exp(loss)
         return accuracy, token_accuracy, ppl
     
