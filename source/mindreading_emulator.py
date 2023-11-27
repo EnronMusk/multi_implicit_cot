@@ -174,6 +174,7 @@ class MindReadingEmulator(nn.Module):
             # Evaluate
             sep_positions = get_sep_position(input_ids_all, self.tokenizer.eos_token_id)
             for i, (input_ids_all_i, beam_output_i) in enumerate(zip(labels_nocot, beam_output)):
+                self.__sub_iteration += 1
                 sep_position = sep_positions[i].item()
                 tgt = input_ids_all_i[sep_position+1:]
                 tgt_text = self.tokenizer.decode(tgt, skip_special_tokens=True)
