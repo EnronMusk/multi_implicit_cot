@@ -183,7 +183,7 @@ class MindReadingEmulator(nn.Module):
                 pred_ans = extractAnswer(pred_text)
                 if ans == pred_ans:
                     total_correct += 1
-                if i == 0 and self.__sub_iteration <= 100: # to limit spam of prediction examples.
+                if i == 0 and self.__sub_iteration >= len(dataloader)-3: # to limit spam of prediction examples.
                     print (f'Input H. Layer 1, V. Layer 1, first 9 states:')
                     print(np.round(teacher_states[0][0][:9].cpu().numpy(), decimals=4))
                     print (f'Target: {tgt_text}')

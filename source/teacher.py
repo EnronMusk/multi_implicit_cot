@@ -232,7 +232,7 @@ class Teacher(nn.Module):
                 if ans == pred_ans:
                     total_correct += 1
 
-                if i == 0 and self.__sub_iteration <= 100: # to limit spam of prediction examples.
+                if i == 0 and self.__sub_iteration >= len(dataloader)-3: # to limit spam of prediction examples.
                     print (f'Input: {self.tokenizer.decode(input_ids_all_i[:sep_position], skip_special_tokens=True)}')
                     print (f'Target: {tgt_text}')
                     print (f'Predicted: {pred_text}')

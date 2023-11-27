@@ -126,6 +126,7 @@ class ThoughtEmulator(nn.Module):
         for batch in tqdm.tqdm(dataloader):
             #import pdb; pdb.set_trace()
             input_ids_cot = batch['input_ids_cot'].to(device)
+            input_ids_only = batch['input_ids_only'].to(device)
             batch_size = input_ids_cot.shape[0]
             with ctx:
                 teacher_states = self.teacher.extractStates(input_ids=input_ids_cot, delta=self.config.delta, subset=self.config.subset)
@@ -133,6 +134,15 @@ class ThoughtEmulator(nn.Module):
                 loss = outputs.loss
             total_loss += outputs.total_loss.item()
             total_instances += batch_size
+
+            if i == 0 and self.__sub_iteration >= len(dataloader)-3:
+                #We print some of the states to compare.
+                print(f'Input: {self.tokenizer.decode(input_ids_only[0], skip_special_tokens=True)}')
+                print(f'Target H. Layer 1, V. Layer 1, first 9 states:')
+                print(np.round(teacher_states[0][0][:9].cpu().numpy(), decimals=4))
+                print (f'Predicted H. Layer 1, V. Layer 1, first 9 states: ')
+                print(np.round(outputs.emulated_teacher_states[0][0][:9].cpu().detach().numpy(), decimals=4))
+                print("")
 
         loss = total_loss / total_instances
         return outputs.quasi_train_accuracy, loss
