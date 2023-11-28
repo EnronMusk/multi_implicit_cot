@@ -17,6 +17,6 @@ Each multiplication is delimited by `$`. The `1 7 * 1 3` corresponds to `31 * 71
 
 Dataset is dynamically generated and saved: [here](https://github.com/EnronMusk/multi_implicit_cot/tree/main/data)
 
-Models are saved [here](
-
 Referenced paper: [here](https://arxiv.org/pdf/2311.01460.pdf)
+
+Results:
