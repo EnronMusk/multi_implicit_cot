@@ -1,4 +1,5 @@
 **Model demo** notebook is stored with instructions and visuals: [here](https://github.com/EnronMusk/multi_implicit_cot/blob/main/demo/model_demo.ipynb)
+
 Simply run the notebook to explore results.
 
 ## **Data Format**
