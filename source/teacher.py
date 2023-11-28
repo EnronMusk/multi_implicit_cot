@@ -173,14 +173,6 @@ class Teacher(nn.Module):
                 beam_output.append(beam_output_i)
         return beam_output
 
-    @classmethod
-    def from_pretrained(self, pretrained_path):
-        config = TeacherConfig.from_pretrained(pretrained_path)
-        model = Teacher(config)
-        state_dict = torch.load(os.path.join(pretrained_path, 'state_dict.bin'))
-        model.load_state_dict(state_dict)
-        return model
-
     def save_pretrained(self, save_directory) -> None:
         print (f'Saving to {save_directory}')
         self.config.save_pretrained(save_directory)
@@ -199,8 +191,7 @@ class Teacher(nn.Module):
         total_correct_tokens = 0
         total_correct = 0
         total_loss = 0
-
-        self.__sub_iteration = 0
+        sub_iteration = 0
 
         for batch in tqdm.tqdm(dataloader):
             input_ids_all = batch['input_ids_all'].to(device)
@@ -222,7 +213,7 @@ class Teacher(nn.Module):
                 max_new_tokens=self.config.max_new_tokens,
             )
             for i, (input_ids_all_i, beam_output_i) in enumerate(zip(input_ids_all, beam_output)):
-                self.__sub_iteration += 1
+                sub_iteration += 1
                 sep_position = sep_positions[i].item()
                 tgt = input_ids_all_i[sep_position+1:]
                 tgt_text = self.tokenizer.decode(tgt, skip_special_tokens=True)
@@ -232,7 +223,7 @@ class Teacher(nn.Module):
                 if ans == pred_ans:
                     total_correct += 1
 
-                if i == 0 and self.__sub_iteration >= len(dataloader)-3: # to limit spam of prediction examples.
+                if sub_iteration >= len(dataloader.dataset)-2: # to limit spam of prediction examples.
                     print (f'Input: {self.tokenizer.decode(input_ids_all_i[:sep_position], skip_special_tokens=True)}')
                     print (f'Target: {tgt_text}')
                     print (f'Predicted: {pred_text}')
@@ -265,7 +256,7 @@ class Teacher(nn.Module):
     def train(self, train_handler : DatasetHandler, test_handler : DatasetHandler, limit : float) -> None:
         '''
         Trains the model and automatically evaluates. 
-        @limit hard caps the desired accuracy to stop training early if the threshold is meet.
+        @limit hard caps the desired accuracy to stop training early if the threshold is met.
         '''
         dtype = 'float32'
         ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
@@ -318,17 +309,17 @@ class Teacher(nn.Module):
             ppl = loss.exp().item()
 
             #We want 10 updates on steps, accuracy and loss.
-            if iteration % math.floor(len(train_dataloader)/10) == 0:
+            if iteration % math.floor(len(train_dataloader)/10+1) == 0:
                 print (f"Step: {iteration}. PPL: {ppl:.6f}. Training Accuracy: {token_accuracy:.6f}")
             iteration += 1
 
             train_losses.append(loss.item())
             train_accs.append(token_accuracy)
             
-        print (f"Evaluating test dataset now...")
+        print (f"\u2714 Evaluating test dataset now...")
         accuracy, token_accuracy, ppl = self.evaluate(val_dataloader, ctx)
 
-        print (f'Perplexitity: {ppl:.6f}; Test Accuracy: {accuracy:.6f}; Training Accuracy: {token_accuracy:.6f}.')
+        print (f'\u2192 Perplexitity: {ppl:.6f}; Test Accuracy: {accuracy:.6f}; Training Accuracy: {token_accuracy:.6f}.')
         teacher.save_pretrained(os.path.join(train_handler.path+r'\models\teacher'))
 
         createAccuracyPlot(train_accs) #Plots the lsos and accuracy information over batches, so we can gage training performance.

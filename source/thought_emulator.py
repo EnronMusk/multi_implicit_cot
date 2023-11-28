@@ -100,14 +100,6 @@ class ThoughtEmulator(nn.Module):
         outputs.emulated_teacher_states = emulated_teacher_states
         return outputs
 
-    @classmethod
-    def from_pretrained(self, pretrained_path, teacher : Teacher):
-        config = ThoughtEmulatorConfig.from_pretrained(pretrained_path)
-        model = ThoughtEmulator(config, teacher)
-        state_dict = torch.load(os.path.join(pretrained_path, 'state_dict.bin'))
-        model.load_state_dict(state_dict)
-        return model
-
     def save_pretrained(self, save_directory) -> None:
         print (f'Saving to {save_directory}')
         self.config.save_pretrained(save_directory)
@@ -123,6 +115,8 @@ class ThoughtEmulator(nn.Module):
 
         total_instances = 0
         total_loss = 0
+        sub_iteration = 0
+
         for batch in tqdm.tqdm(dataloader):
             #import pdb; pdb.set_trace()
             input_ids_cot = batch['input_ids_cot'].to(device)
@@ -135,14 +129,16 @@ class ThoughtEmulator(nn.Module):
             total_loss += outputs.total_loss.item()
             total_instances += batch_size
 
-            if i == 0 and self.__sub_iteration >= len(dataloader)-3:
-                #We print some of the states to compare.
-                print(f'Input: {self.tokenizer.decode(input_ids_only[0], skip_special_tokens=True)}')
-                print(f'Target H. Layer 1, V. Layer 1, first 9 states:')
-                print(np.round(teacher_states[0][0][:9].cpu().numpy(), decimals=4))
-                print (f'Predicted H. Layer 1, V. Layer 1, first 9 states: ')
-                print(np.round(outputs.emulated_teacher_states[0][0][:9].cpu().detach().numpy(), decimals=4))
-                print("")
+            for _ in range(len(input_ids_cot)): #iterates through each individual batch
+                sub_iteration += 1
+                if sub_iteration >= len(dataloader.dataset)-2: # to limit spam of prediction examples.
+                    #We print some of the states to compare.
+                    print(f'Input: {self.tokenizer.decode(input_ids_only[0], skip_special_tokens=True)}')
+                    print(f'Target H. Layer 1, V. Layer 1, first 9 states:')
+                    print(np.round(teacher_states[0][0][:9].cpu().numpy(), decimals=4))
+                    print (f'Predicted H. Layer 1, V. Layer 1, first 9 states: ')
+                    print(np.round(outputs.emulated_teacher_states[0][0][:9].cpu().detach().numpy(), decimals=4))
+                    print("")
 
         loss = total_loss / total_instances
         return outputs.quasi_train_accuracy, loss
@@ -180,7 +176,7 @@ class ThoughtEmulator(nn.Module):
     def train(self, train_handler : DatasetHandler, test_handler : DatasetHandler, limit : float) -> None:
         '''
         Trains the model and automatically evaluates. 
-        @limit hard caps the desired accuracy to stop training early if the threshold is meet.
+        @limit hard caps the desired accuracy to stop training early if the threshold is met.
         '''
         dtype = 'float32'
         ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
@@ -236,17 +232,17 @@ class ThoughtEmulator(nn.Module):
             optimizer.zero_grad() #Set gradients to zero.
 
             #We want 10 updates on steps, accuracy and loss.
-            if iteration % math.floor(len(train_dataloader)/10) == 0:
+            if iteration % math.floor(len(train_dataloader)/10+1) == 0:
                 print (f"Step: {iteration}. Loss: {loss:.6f}. Quasi Training Accuracy: {quasi_train_accuracy:.6f}.")
             iteration += 1
 
             train_losses.append(loss.item())
             train_accs.append(quasi_train_accuracy)
 
-        print (f"Evaluating test dataset now...")
+        print (f"\u2714 Evaluating test dataset now...")
         accuracy, loss = self.evaluate(val_dataloader, ctx)
 
-        print (f'Loss: {loss:.6f}; Quasi Test Accuracy: {accuracy:.6f}; Quasi Training Accuracy: {quasi_train_accuracy:.6f}.')
+        print (f'\u2192 Loss: {loss:.6f}; Quasi Test Accuracy: {accuracy:.6f}; Quasi Training Accuracy: {quasi_train_accuracy:.6f}.')
         emulator.save_pretrained(os.path.join(train_handler.path+r'\models\thought_emulator'))
 
         createLossPlot(train_losses) #Plots the loss and accuracy information over batches, so we can gage training performance.

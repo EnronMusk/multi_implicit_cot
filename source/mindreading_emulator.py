@@ -94,21 +94,13 @@ class MindReadingEmulator(nn.Module):
         outputs.total_tokens = total_tokens
         return outputs
 
-    @classmethod
-    def from_pretrained(self, pretrained_path, teacher : Teacher):
-        config = MindReadingEmulatorConfig.from_pretrained(pretrained_path)
-        model = MindReadingEmulator(config, teacher)
-        state_dict = torch.load(os.path.join(pretrained_path, 'state_dict.bin'))
-        model.load_state_dict(state_dict)
-        return model
-
     def save_pretrained(self, save_directory) -> None:
         print (f'Saving to {save_directory}')
         self.config.save_pretrained(save_directory)
         state_dict = self.state_dict()
         torch.save(state_dict, os.path.join(save_directory, 'state_dict.bin'))
 
-    def __generate(self, input_ids, teacher_states, max_new_tokens=512, num_beams=1):
+    def generate(self, input_ids, teacher_states, max_new_tokens=512, num_beams=1):
         sep_positions = get_sep_position(input_ids, self.tokenizer.eos_token_id)
         batch_size = input_ids.shape[0]
         beam_output = []
@@ -143,9 +135,8 @@ class MindReadingEmulator(nn.Module):
         total_correct = 0
         total_correct_tokens = 0
         total_loss = 0
-
-        self.__sub_iteration = 0
         
+        sub_iteration = 0
         for batch in tqdm.tqdm(dataloader):
             input_ids_all = batch['input_ids_all'].to(device)
             input_ids_nocot = batch['input_ids_nocot'].to(device)
@@ -165,7 +156,7 @@ class MindReadingEmulator(nn.Module):
 
             # Generate
             with ctx:
-                beam_output = self.__generate(
+                beam_output = self.generate(
                     input_ids=input_ids_nocot,
                     teacher_states=teacher_states,
                     max_new_tokens=self.config.max_new_tokens,
@@ -174,7 +165,7 @@ class MindReadingEmulator(nn.Module):
             # Evaluate
             sep_positions = get_sep_position(input_ids_all, self.tokenizer.eos_token_id)
             for i, (input_ids_all_i, beam_output_i) in enumerate(zip(labels_nocot, beam_output)):
-                self.__sub_iteration += 1
+                sub_iteration +=1
                 sep_position = sep_positions[i].item()
                 tgt = input_ids_all_i[sep_position+1:]
                 tgt_text = self.tokenizer.decode(tgt, skip_special_tokens=True)
@@ -183,7 +174,7 @@ class MindReadingEmulator(nn.Module):
                 pred_ans = extractAnswer(pred_text)
                 if ans == pred_ans:
                     total_correct += 1
-                if i == 0 and self.__sub_iteration >= len(dataloader)-3: # to limit spam of prediction examples.
+                if sub_iteration >= len(dataloader.dataset)-2: # to limit spam of prediction examples.
                     print (f'Input H. Layer 1, V. Layer 1, first 9 states:')
                     print(np.round(teacher_states[0][0][:9].cpu().numpy(), decimals=4))
                     print (f'Target: {tgt_text}')
@@ -211,9 +202,6 @@ class MindReadingEmulator(nn.Module):
         custom_data_handler = DataLoader(custom_data_handler, batch_size = self.config.batch_size, collate_fn = collate_fn, shuffle=False)
 
         self.evaluate(custom_data_handler, ctx)
-
-
-
 
     def train(self, train_handler : DatasetHandler, test_handler : DatasetHandler, limit : float) -> None:
         '''
@@ -276,17 +264,17 @@ class MindReadingEmulator(nn.Module):
             ppl = loss.exp().item()
 
             #We want 10 updates on steps, accuracy and loss.
-            if iteration % math.floor(len(train_dataloader)/10) == 0:
+            if iteration % math.floor(len(train_dataloader)/10+1) == 0:
                 print (f"Step: {iteration}. Loss: {loss:.6f}. Training Accuracy: {token_accuracy:.6f}.")
             iteration += 1
 
             train_losses.append(loss.item())
             train_accs.append(token_accuracy)
 
-        print (f"Evaluating test dataset now...")
+        print (f"\u2714 Evaluating test dataset now...")
         accuracy, token_accuracy, ppl = self.evaluate(val_dataloader, ctx)
 
-        print (f'Perplexitity: {ppl:.6f}; Test Accuracy: {accuracy:.6f}; Training Accuracy: {token_accuracy:.6f}.')
+        print (f'\u2192 Perplexitity: {ppl:.6f}; Test Accuracy: {accuracy:.6f}; Training Accuracy: {token_accuracy:.6f}.')
         emulator.save_pretrained(os.path.join(train_handler.path+r'\models\mindreading_emulator'))
 
         createLossPlot(train_losses) #Plots the loss and accuracy information over batches, so we can gage training performance.
