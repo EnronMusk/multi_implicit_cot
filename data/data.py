@@ -4,6 +4,7 @@ import secrets as s
 from torch.utils.data import Dataset
 from dataclasses import dataclass
 from torch.nn.utils.rnn import pad_sequence
+from transformers import AutoTokenizer
 
 import torch
 import copy
@@ -35,10 +36,10 @@ class DatasetHandler(Dataset):
     @type is the type of the dataset, train or test
     """
     
-    def __init__(self, tokenizer, parent_path : str, max_len : int, type : str):
+    def __init__(self, parent_path : str, max_len : int, type : str):
         super().__init__()
         self.path = parent_path
-        self.tokenizer = tokenizer
+        self.tokenizer = AutoTokenizer.from_pretrained('gpt2')
         self.max_len = max_len
         self.type = type
 
