@@ -51,7 +51,7 @@ class DatasetHandler(Dataset):
         data = []
         delimiter_input = '||'
         delimter_output = ' #### '
-        delmiter_problem = ' $$$ '
+        delmiter_problem = ' $ '
 
         def __generateProblem(i : int, j : int) -> None:
             if i is None: i = s.randbelow(100)

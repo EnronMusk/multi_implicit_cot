@@ -198,6 +198,7 @@ class ThoughtEmulator(nn.Module):
         optimizer = torch.optim.AdamW(trainable_params, lr = self.config.eta, **extra_args)
 
         self.base_model.train() #Put model in training mode
+        self.teacher.base_model.eval()
 
         for p in self.teacher.parameters():
             p.requires_grad = False
