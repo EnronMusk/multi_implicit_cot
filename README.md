@@ -19,7 +19,10 @@ Dataset is dynamically generated and saved: [here](https://github.com/EnronMusk/
 
 Referenced paper: [here](https://arxiv.org/pdf/2311.01460.pdf)
 
-**Results** from 777k training dataset and 77k test dataset:
+## **Results** 
+
+from 777k training dataset and 77k test dataset:
+
 |Model |Loss | Test | Train|
 |----------|----------|----------|----------|
 |Teacher|Perplexitity: 1.000465| Test Accuracy: 0.997169| Training Accuracy: 0.999882|
