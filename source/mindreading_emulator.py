@@ -128,7 +128,7 @@ class MindReadingEmulator(nn.Module):
         '''
         Calculates accuracy metrics on test data.
         '''
-        self.base_model.eval() #Freeze loss function, gradients etc.
+        self.eval() #Freeze loss function, gradients etc.
 
         total_instances = 0
         total_tokens = 0
@@ -141,7 +141,6 @@ class MindReadingEmulator(nn.Module):
             input_ids_all = batch['input_ids_all'].to(device)
             input_ids_nocot = batch['input_ids_nocot'].to(device)
             labels_nocot = batch['labels_nocot'].to(device)
-            input_ids_only = batch['input_ids_only'].to(device)
 
             batch_size = input_ids_nocot.shape[0]
             with ctx:
@@ -175,7 +174,7 @@ class MindReadingEmulator(nn.Module):
                 if ans == pred_ans:
                     total_correct += 1
                 if sub_iteration >= len(dataloader.dataset)-2: # to limit spam of prediction examples.
-                    print (f'Input H. Layer 1, V. Layer 1, first 9 states:')
+                    print (f'Input Layer 1, Attention Head 1, first 9 states:')
                     print(np.round(teacher_states[0][0][:9].cpu().numpy(), decimals=4))
                     print (f'Target: {tgt_text}')
                     print (f'Predicted: {pred_text}')
@@ -195,15 +194,14 @@ class MindReadingEmulator(nn.Module):
         ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
         ctx = torch.amp.autocast(device_type='cuda', dtype=ptdtype)
 
-        teacher = self.to(device).to(ptdtype)
         # Load data
-        tokenizer = teacher.tokenizer
+        tokenizer = self.tokenizer
         collate_fn = CoTDataCollator(tokenizer)
         custom_data_handler = DataLoader(custom_data_handler, batch_size = self.config.batch_size, collate_fn = collate_fn, shuffle=False)
 
         self.evaluate(custom_data_handler, ctx)
 
-    def train(self, train_handler : DatasetHandler, test_handler : DatasetHandler, limit : float) -> None:
+    def trainModel(self, train_handler : DatasetHandler, test_handler : DatasetHandler, limit : float) -> None:
         '''
         Trains the model and automatically evaluates. 
         @limit hard caps the desired accuracy to stop training early if the threshold is meet.
@@ -216,7 +214,7 @@ class MindReadingEmulator(nn.Module):
         emulator  = self.to(device).to(ptdtype)
 
         # Load data
-        tokenizer = self.teacher.tokenizer
+        tokenizer = self.tokenizer
         collate_fn = CoTDataCollator(tokenizer)
         train_dataloader = DataLoader(train_handler, batch_size = self.config.batch_size, collate_fn = collate_fn, shuffle=True)
         val_dataloader = DataLoader(test_handler, batch_size = self.config.batch_size, collate_fn = collate_fn, shuffle=False)
@@ -227,8 +225,8 @@ class MindReadingEmulator(nn.Module):
         extra_args = dict(fused=True) if use_fused else dict()
         optimizer = torch.optim.AdamW(trainable_params, lr = self.config.eta, **extra_args)
 
-        self.base_model.train() #Put model in training mode
-        self.teacher.base_model.eval()
+        self.train() #Put model in training mode
+        self.teacher.eval() #We want teacher to be fixed
 
         for p in self.teacher.parameters():
             p.requires_grad = False
@@ -240,7 +238,7 @@ class MindReadingEmulator(nn.Module):
         # Train
         iteration = 0
         for batch in tqdm.tqdm(train_dataloader):
-            self.base_model.train()
+            self.train()
 
 
             input_ids_all = batch['input_ids_all'].to(device)
@@ -266,7 +264,7 @@ class MindReadingEmulator(nn.Module):
 
             #We want 10 updates on steps, accuracy and loss.
             if iteration % math.floor(len(train_dataloader)/10+1) == 0:
-                print (f"Step: {iteration}. Loss: {loss:.6f}. Training Accuracy: {token_accuracy:.6f}.")
+                print (f"Step: {iteration}. CrossEntropyLoss: {loss:.6f}. Training Accuracy: {token_accuracy:.6f}.")
             iteration += 1
 
             train_losses.append(loss.item())

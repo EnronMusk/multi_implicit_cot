@@ -111,7 +111,7 @@ class ThoughtEmulator(nn.Module):
         '''
         Calculates accuracy metrics on test data.
         '''
-        self.base_model.eval() #Freeze loss function, gradients etc.
+        self.eval() #Freeze loss function, gradients etc.
 
         total_instances = 0
         total_loss = 0
@@ -130,15 +130,15 @@ class ThoughtEmulator(nn.Module):
             total_instances += batch_size
 
             for _ in range(len(input_ids_cot)): #iterates through each individual batch
-                sub_iteration += 1
                 if sub_iteration >= len(dataloader.dataset)-2: # to limit spam of prediction examples.
                     #We print some of the states to compare.
-                    print(f'Input: {self.tokenizer.decode(input_ids_only[0], skip_special_tokens=True)}')
+                    print(f'Input: {self.tokenizer.decode(input_ids_only[sub_iteration], skip_special_tokens=True)}')
                     print(f'Target H. Layer 1, V. Layer 1, first 9 states:')
                     print(np.round(teacher_states[0][0][:9].cpu().numpy(), decimals=4))
                     print (f'Predicted H. Layer 1, V. Layer 1, first 9 states: ')
                     print(np.round(outputs.emulated_teacher_states[0][0][:9].cpu().detach().numpy(), decimals=4))
                     print("")
+                sub_iteration += 1
 
         loss = total_loss / total_instances
         return outputs.quasi_train_accuracy, loss
@@ -150,7 +150,7 @@ class ThoughtEmulator(nn.Module):
         self.base_model.eval()
 
         # Load data
-        tokenizer = self.teacher.tokenizer
+        tokenizer = self.tokenizer
         collate_fn = CoTDataCollator(tokenizer)
         custom_data_handler = DataLoader(custom_data_handler, batch_size = self.config.batch_size, collate_fn = collate_fn, shuffle=False)
 
@@ -164,16 +164,16 @@ class ThoughtEmulator(nn.Module):
 
             #We print some of the states to compare.
             print (f'Input: {self.tokenizer.decode(input_ids_only[0], skip_special_tokens=True)}')
-            print (f'Target H. Layer 1, V. Layer 1, first 9 states:')
+            print (f'Target Layer 1, Attention Head 1, first 9 states:')
             print(np.round(teacher_states[0][0][:9].cpu().numpy(), decimals=4))
-            print (f'Predicted H. Layer 1, V. Layer 1, first 9 states: ')
+            print (f'Predicted Layer 1, Attention Head 1, first 9 states:')
             print(np.round(emulated_teacher_states[0][0][:9].cpu().detach().numpy(), decimals=4))
 
 
 
 
 
-    def train(self, train_handler : DatasetHandler, test_handler : DatasetHandler, limit : float) -> None:
+    def trainModel(self, train_handler : DatasetHandler, test_handler : DatasetHandler, limit : float) -> None:
         '''
         Trains the model and automatically evaluates. 
         @limit hard caps the desired accuracy to stop training early if the threshold is met.
@@ -186,7 +186,7 @@ class ThoughtEmulator(nn.Module):
         emulator  = self.to(device).to(ptdtype)
 
         # Load data
-        tokenizer = self.teacher.tokenizer
+        tokenizer = self.tokenizer
         collate_fn = CoTDataCollator(tokenizer)
         train_dataloader = DataLoader(train_handler, batch_size = self.config.batch_size, collate_fn = collate_fn, shuffle=True)
         val_dataloader = DataLoader(test_handler, batch_size = self.config.batch_size, collate_fn = collate_fn, shuffle=False)
@@ -197,8 +197,8 @@ class ThoughtEmulator(nn.Module):
         extra_args = dict(fused=True) if use_fused else dict()
         optimizer = torch.optim.AdamW(trainable_params, lr = self.config.eta, **extra_args)
 
-        self.base_model.train() #Put model in training mode
-        self.teacher.base_model.eval()
+        self.train() #Put model in training mode
+        self.teacher.eval() #We want teacher to be fixed
 
         for p in self.teacher.parameters():
             p.requires_grad = False
@@ -218,7 +218,7 @@ class ThoughtEmulator(nn.Module):
             with ctx:
                 with torch.no_grad():
                     teacher_states = self.teacher.extractStates(input_ids=input_ids_cot_only, delta=self.config.delta, subset=self.config.subset)
-                outputs = emulator.computeLoss(input_ids=input_w_nocot, teacher_states=teacher_states)
+                outputs = self.computeLoss(input_ids=input_w_nocot, teacher_states=teacher_states)
             loss = outputs.loss
             quasi_train_accuracy = outputs.quasi_train_accuracy
 

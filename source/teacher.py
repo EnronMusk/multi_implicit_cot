@@ -184,7 +184,7 @@ class Teacher(nn.Module):
         '''
         Calculates accuracy metrics on test data and can also generate predictions.
         '''
-        self.base_model.eval() #Freeze loss function, gradients etc.
+        self.eval() #Freeze loss function, gradients etc.
 
         total_instances = 0
         total_tokens = 0
@@ -253,7 +253,7 @@ class Teacher(nn.Module):
         self.evaluate(custom_data_handler, ctx)
 
 
-    def train(self, train_handler : DatasetHandler, test_handler : DatasetHandler, limit : float) -> None:
+    def trainModel(self, train_handler : DatasetHandler, test_handler : DatasetHandler, limit : float) -> None:
         '''
         Trains the model and automatically evaluates. 
         @limit hard caps the desired accuracy to stop training early if the threshold is met.
@@ -277,7 +277,7 @@ class Teacher(nn.Module):
         extra_args = dict(fused=True) if use_fused else dict()
         optimizer = torch.optim.AdamW(trainable_params, lr = self.config.eta, **extra_args)
 
-        self.base_model.train() #Put model in training mode
+        teacher.train() #Put model in training mode
 
         train_losses = []
 
@@ -286,7 +286,7 @@ class Teacher(nn.Module):
         # Train
         iteration = 0
         for batch in tqdm.tqdm(train_dataloader):
-            self.base_model.train()
+            teacher.train()
         
 
             input_ids = batch['input_ids_all'].to(device)

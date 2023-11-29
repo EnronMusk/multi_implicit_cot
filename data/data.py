@@ -224,6 +224,11 @@ class DatasetHandler(Dataset):
                 torch.tensor(self.labels_all[i], dtype=torch.long),
                 )
     
+    def readDataset(self):
+        '''
+        Automatically finds and reads existing datasets of the initialized @type and tokenizes it.
+        '''
+        self.__tokenizeDataset()
 
 @dataclass
 class CoTDataCollator:

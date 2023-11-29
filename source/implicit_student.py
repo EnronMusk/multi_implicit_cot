@@ -52,6 +52,9 @@ class ImplicitStudent():
         '''
         Calculates accuracy metrics on test data.
         '''
+        self.thought.eval() #Freeze loss function, gradients etc.
+        self.mindread.eval() 
+
         total_instances = 0
         total_tokens = 0
         total_correct = 0
@@ -120,7 +123,7 @@ class ImplicitStudent():
 
         self.evaluate(custom_data_handler, ctx)
 
-    def train(self, train_handler : DatasetHandler, test_handler : DatasetHandler, limit : float) -> None:
+    def trainModel(self, train_handler : DatasetHandler, test_handler : DatasetHandler, limit : float) -> None:
         '''
         Trains the model and automatically evaluates. 
         @limit hard caps the desired accuracy to stop training early if the threshold is met.
@@ -144,8 +147,8 @@ class ImplicitStudent():
         extra_args = dict(fused=True) if use_fused else dict()
         optimizer = torch.optim.AdamW(trainable_params, lr=self.config.eta, **extra_args)
 
-        thought.base_model.eval() # to turn off dropout
-        mindread.base_model.eval() # to turn off dropout
+        thought.eval() # to turn off dropout
+        mindread.eval() # to turn off dropout
 
         train_losses = []
 
@@ -177,7 +180,7 @@ class ImplicitStudent():
 
             #We want 10 updates on steps, accuracy and loss.
             if iteration % math.floor(len(train_dataloader)/10+1) == 0:
-                print (f"Step: {iteration}. Loss: {loss:.6f}. Training Accuracy: {token_accuracy:.6f}.")
+                print (f"Step: {iteration}. CrossEntropyLoss: {loss:.6f}. Training Accuracy: {token_accuracy:.6f}.")
             iteration += 1
 
             train_losses.append(loss.item())
