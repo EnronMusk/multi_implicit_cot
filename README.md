@@ -27,3 +27,4 @@ Used gpt-2 small (12 layers) and 777k training dataset and 77k test dataset:
 |----------|----------|----------|----------|
 |Teacher|Perplexitity: 1.000465| Test Accuracy: 0.997169| Training Accuracy: 0.999882|
 |ThoughtEmulator|Loss: 4.369609| Quasi Test Accuracy 0.977900| Quasi Training Accuracy: 0.977773|
+|MindReadingEmulator|Perplexitity: 1.000601| Test Accuracy: 0.996688| Training Accuracy: 0.999745|
