@@ -17,6 +17,14 @@ Each multiplication is delimited by `$`. The `1 7 * 1 3` corresponds to `31 * 71
 
 Dataset is dynamically generated and saved: [here](https://github.com/EnronMusk/multi_implicit_cot/tree/main/data)
 
-Models are saved [here](
-
 Referenced paper: [here](https://arxiv.org/pdf/2311.01460.pdf)
+
+## **Results** 
+
+Used gpt-2 small (12 layers) and 777k training dataset and 77k test dataset:
+
+|Model |Loss | Test | Train|
+|----------|----------|----------|----------|
+|Teacher|Perplexitity: 1.000465| Test Accuracy: 0.997169| Training Accuracy: 0.999882|
+|ThoughtEmulator|Loss: 4.369609| Quasi Test Accuracy 0.977900| Quasi Training Accuracy: 0.977773|
+|MindReadingEmulator|Perplexitity: 1.000601| Test Accuracy: 0.996688| Training Accuracy: 0.999745|
