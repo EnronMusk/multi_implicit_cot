@@ -210,7 +210,7 @@ class ThoughtEmulator(nn.Module):
         # Train
         iteration = 0
         for batch in tqdm.tqdm(train_dataloader):
-            self.base_model.train()
+            self.train()
         
 
             input_ids_cot_only  = batch['input_ids_cot'].to(device)
