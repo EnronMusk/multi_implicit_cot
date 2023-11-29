@@ -20,3 +20,6 @@ Dataset is dynamically generated and saved: [here](https://github.com/EnronMusk/
 Referenced paper: [here](https://arxiv.org/pdf/2311.01460.pdf)
 
 Results:
+| |||
+|----------|----------|
+|Teacher|Perplexitity: 1.000465| Test Accuracy: 0.997169| Training Accuracy: 0.999882|
