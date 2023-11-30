@@ -1,6 +1,6 @@
 **Model demo** notebook is stored with instructions and visuals: [here](https://github.com/EnronMusk/multi_implicit_cot/blob/main/demo/model_demo.ipynb)
 
-Simply run the notebook to explore results.
+Simply run the notebook to explore results. The notebook does request user input for a custom prediction, but otherwise its fully automated.
 
 ## **Data Format**
 The format of training and test datasets follow this format:
@@ -23,11 +23,15 @@ Referenced paper: [here](https://arxiv.org/pdf/2311.01460.pdf)
 
 Used gpt-2 small (12 layers) and 777k training dataset and 77k test dataset:
 
-|Model |Loss | Test | Train|
+|**Model** |**Loss** | **Test** | **Train**|
 |----------|----------|----------|----------|
 |Teacher|Perplexitity: 1.000465| Test Accuracy: 0.997169| Training Accuracy: 0.999882|
 |ThoughtEmulator|Loss: 4.369609| Quasi Test Accuracy 0.977900| Quasi Training Accuracy: 0.977773|
 |MindReadingEmulator|Perplexitity: 1.000601| Test Accuracy: 0.996688| Training Accuracy: 0.999745|
 |ImplicitStudent|Perplexitity: 1.000000| Test Accuracy: 1.000000| Training Accuracy: 1.000000|
 
-The implicit student model performed exceptionally well and its accuracy statistics are accurate to 6 decimal places.
+## **Notes** 
+
+The implicit student model performed exceptionally well after being retrained on the train data and its accuracy statistics are accurate to 6 decimal places.
+
+The teacher model can have much better performance with higher eta (learning rate). I multipled eta by **8/5** and saw 0.999831 test accuracy and 0.999995 training, which are both significantly higher. This makes sense because our implicit student performed better than the teacher, when it was trained on the exact same data.
