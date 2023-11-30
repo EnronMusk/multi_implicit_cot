@@ -129,16 +129,16 @@ class ThoughtEmulator(nn.Module):
             total_loss += outputs.total_loss.item()
             total_instances += batch_size
 
-            for _ in range(len(input_ids_cot)): #iterates through each individual batch
+            for i in range(len(input_ids_only)): #iterates through each individual batch
+                sub_iteration += 1
                 if sub_iteration >= len(dataloader.dataset)-2: # to limit spam of prediction examples.
                     #We print some of the states to compare.
-                    print(f'Input: {self.tokenizer.decode(input_ids_only[sub_iteration], skip_special_tokens=True)}')
+                    print(f'Input: {self.tokenizer.decode(input_ids_only[i], skip_special_tokens=True)}')
                     print(f'Target H. Layer 1, V. Layer 1, first 9 states:')
                     print(np.round(teacher_states[0][0][:9].cpu().numpy(), decimals=4))
                     print (f'Predicted H. Layer 1, V. Layer 1, first 9 states: ')
                     print(np.round(outputs.emulated_teacher_states[0][0][:9].cpu().detach().numpy(), decimals=4))
                     print("")
-                sub_iteration += 1
 
         loss = total_loss / total_instances
         return outputs.quasi_train_accuracy, loss
