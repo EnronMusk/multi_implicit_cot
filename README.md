@@ -30,7 +30,7 @@ Used gpt-2 small (12 layers) and 777k training dataset and 77k test dataset:
 |MindReadingEmulator|Perplexitity: 1.000601| Test Accuracy: 0.996688| Training Accuracy: 0.999745|
 |ImplicitStudent|Perplexitity: 1.000000| Test Accuracy: 1.000000| Training Accuracy: 1.000000|
 
-## **NOTES** 
+## **Notes** 
 
 The implicit student model performed exceptionally well after being retrained on the train data and its accuracy statistics are accurate to 6 decimal places.
 
