@@ -34,4 +34,4 @@ Used gpt-2 small (12 layers) and 777k training dataset and 77k test dataset:
 
 The implicit student model performed exceptionally well after being retrained on the train data and its accuracy statistics are accurate to 6 decimal places.
 
-The teacher model can have much better performance with higher eta (learning rate). I multipled eta by **8/5** and saw 0.999831 test accuracy and 0.999995 training, which are both significantly higher.
+The teacher model can have much better performance with higher eta (learning rate). I multipled eta by **8/5** and saw 0.999831 test accuracy and 0.999995 training, which are both significantly higher. This makes sense because our implicit student performed better than the teacher, when it was trained on the exact same data.
