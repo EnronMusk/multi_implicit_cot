@@ -1,6 +1,6 @@
 **Model demo** notebook is stored with instructions and visuals: [here](https://github.com/EnronMusk/multi_implicit_cot/blob/main/demo/model_demo.ipynb)
 
-Simply run the notebook to explore results.
+Simply run the notebook to explore results. The notebook does request user input for a custom prediction, but otherwise its fully automated.
 
 ## **Data Format**
 The format of training and test datasets follow this format:
