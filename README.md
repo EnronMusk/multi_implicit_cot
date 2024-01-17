@@ -19,7 +19,7 @@ Dataset is dynamically generated and saved: [here](https://github.com/EnronMusk/
 
 Referenced paper: [here](https://arxiv.org/pdf/2311.01460.pdf)
 
-## **Results with shared states** 
+## **Results with shared states*
 
 Used gpt-2 small (12 layers) and 777k training dataset and 77k test dataset:
 
