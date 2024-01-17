@@ -121,10 +121,24 @@ class ThoughtEmulator(nn.Module):
             #import pdb; pdb.set_trace()
             input_ids_cot = batch['input_ids_cot'].to(device)
             input_ids_only = batch['input_ids_only'].to(device)
+
+            input_ids_nocot_1  = batch['input_ids_nocot_1'].to(device)
+            labels_nocot_2  = batch['labels_nocot_1'].to(device)
+
+            input_ids_nocot_2  = batch['input_ids_nocot_2'].to(device)
+            labels_nocot_2 = batch['labels_nocot_2'].to(device)
+
+
             batch_size = input_ids_cot.shape[0]
             with ctx:
-                teacher_states = self.teacher.extractStates(input_ids=input_ids_cot, delta=self.config.delta, subset=self.config.subset)
-                outputs = self.computeLoss(input_ids=input_ids_cot, teacher_states=teacher_states)
+                teacher_states_1 = self.teacher.extractStates(input_ids=input_ids_nocot_1, delta=self.config.delta, subset=self.config.subset)
+                teacher_states_2 = self.teacher.extractStates(input_ids=input_ids_nocot_2, delta=self.config.delta, subset=self.config.subset)
+
+                teacher_states_total = []
+                for i in range(len(teacher_states_1)):
+                    teacher_states_total.append(teacher_states_1[i]+teacher_states_2[i])
+
+                outputs = self.computeLoss(input_ids=input_ids_cot, teacher_states=teacher_states_total)
                 loss = outputs.loss
             total_loss += outputs.total_loss.item()
             total_instances += batch_size
@@ -134,9 +148,9 @@ class ThoughtEmulator(nn.Module):
                 if sub_iteration >= len(dataloader.dataset)-2: # to limit spam of prediction examples.
                     #We print some of the states to compare.
                     print(f'Input: {self.tokenizer.decode(input_ids_only[i], skip_special_tokens=True)}')
-                    print(f'Target H. Layer 1, V. Layer 1, first 9 states:')
-                    print(np.round(teacher_states[0][0][:9].cpu().numpy(), decimals=4))
-                    print (f'Predicted H. Layer 1, V. Layer 1, first 9 states: ')
+                    print(f'Target Diagonal, first 9 states:')
+                    print(np.round(teacher_states_total[0][0][:9].cpu().numpy(), decimals=4))
+                    print (f'Predicted Diagonal, first 9 states: ')
                     print(np.round(outputs.emulated_teacher_states[0][0][:9].cpu().detach().numpy(), decimals=4))
                     print("")
 
@@ -164,9 +178,9 @@ class ThoughtEmulator(nn.Module):
 
             #We print some of the states to compare.
             print (f'Input: {self.tokenizer.decode(input_ids_only[0], skip_special_tokens=True)}')
-            print (f'Target Layer 1, Attention Head 1, first 9 states:')
+            print (f'Target Layer 1, first 9 states:')
             print(np.round(teacher_states[0][0][:9].cpu().numpy(), decimals=4))
-            print (f'Predicted Layer 1, Attention Head 1, first 9 states:')
+            print (f'Predicted Layer 1, first 9 states:')
             print(np.round(emulated_teacher_states[0][0][:9].cpu().detach().numpy(), decimals=4))
 
 
@@ -212,13 +226,26 @@ class ThoughtEmulator(nn.Module):
         for batch in tqdm.tqdm(train_dataloader):
             self.train()
         
+            input_ids_nocot_1  = batch['input_ids_nocot_1'].to(device)
+            labels_nocot_2  = batch['labels_nocot_1'].to(device)
+
+            input_ids_nocot_2  = batch['input_ids_nocot_2'].to(device)
+            labels_nocot_2 = batch['labels_nocot_2'].to(device)
 
             input_ids_cot_only  = batch['input_ids_cot'].to(device)
             input_w_nocot  = batch['input_ids_nocot'].to(device)
+
             with ctx:
                 with torch.no_grad():
-                    teacher_states = self.teacher.extractStates(input_ids=input_ids_cot_only, delta=self.config.delta, subset=self.config.subset)
-                outputs = self.computeLoss(input_ids=input_w_nocot, teacher_states=teacher_states)
+                    teacher_states_1 = self.teacher.extractStates(input_ids=input_ids_nocot_1, delta=self.config.delta, subset=self.config.subset)
+                    teacher_states_2 = self.teacher.extractStates(input_ids=input_ids_nocot_2, delta=self.config.delta, subset=self.config.subset)
+
+                    teacher_states_total = []
+                    for i in range(len(teacher_states_1)):
+                        teacher_states_total.append(teacher_states_1[i]+teacher_states_2[i])
+
+                outputs = self.computeLoss(input_ids=input_w_nocot, teacher_states=teacher_states_total)
+
             loss = outputs.loss
             quasi_train_accuracy = outputs.quasi_train_accuracy
 

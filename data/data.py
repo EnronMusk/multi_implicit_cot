@@ -11,23 +11,31 @@ import copy
 
 
 def extractAnswer(text):
-    split_pattern = '####'
+    split_pattern = '#####'
     if split_pattern not in text:
         return text.strip().replace(',', '')
     else:
-        _, ans = text.strip().split('####', 1)
-        ans = '####' + ans
+        _, ans = text.strip().split(split_pattern, 1)
+        ans = split_pattern + ans
         ans = ans.strip().replace(',', '')
         return ans
 
 def extractCoT(text):
-    split_pattern = '####'
+    split_pattern = '#####'
     if split_pattern not in text:
         return None
     else:
-        cot, _ = text.strip().split('####', 1)
+        cot, _ = text.strip().split(split_pattern, 1)
         cot = cot.strip()
         return cot
+    
+def extractProblems(src, tgt):
+    split_pattern = ' $ '
+
+    i1, i2 = src.strip().split(split_pattern, 1)
+    c1, c2 = extractCoT(tgt).strip().split(split_pattern, 1)
+    o1, o2 = extractAnswer(tgt).strip().split(split_pattern, 1)
+    return "@@@@@@ " + i1, "@@@@@@ "+ i2, "~~~~~~ " + c1, "~~~~~~ " + c2, o1, '##### ' + o2 #Add back delimiter for p2, add special characters for context.
 
 class DatasetHandler(Dataset):
     """
@@ -40,6 +48,10 @@ class DatasetHandler(Dataset):
         super().__init__()
         self.path = parent_path
         self.tokenizer = AutoTokenizer.from_pretrained('gpt2')
+
+        new_symbols = ['~', '@']
+        self.tokenizer.add_tokens(new_symbols)
+
         self.max_len = max_len
         self.type = type
 
@@ -50,7 +62,7 @@ class DatasetHandler(Dataset):
         '''
         data = []
         delimiter_input = '||'
-        delimter_output = ' #### '
+        delimter_output = ' ##### '
         delmiter_problem = ' $ '
 
         def __generateProblem(i : int, j : int) -> None:
@@ -123,10 +135,23 @@ class DatasetHandler(Dataset):
         edited_sents_only = []
         edited_sents_all = []
         edited_sents_nocot = []
+
+        edited_sents_cot_1 = []
+        edited_sents_only_1 = []
+        edited_sents_all_1 = []
+        edited_sents_nocot_1 = [] 
+
+        edited_sents_cot_2 = []
+        edited_sents_only_2 = []
+        edited_sents_all_2 = []
+        edited_sents_nocot_2 = [] 
+
         for src, tgt in zip(src_lines, tgt_lines):
-            #import pdb; pdb.set_trace()
             ans = extractAnswer(tgt)
             cot = extractCoT(tgt)
+
+            i1, i2, c1, c2, o1, o2 = extractProblems(src, tgt)
+
             sent = ' {} {} '.format(src, bos_tok) + cot + ' {}'.format(eos_tok)
             edited_sents_cot.append(sent)
             sent = ' {} {} '.format(src, bos_tok)
@@ -135,6 +160,24 @@ class DatasetHandler(Dataset):
             edited_sents_all.append(sent)
             sent = ' {} {} '.format(src, bos_tok) + ans + ' {}'.format(eos_tok)
             edited_sents_nocot.append(sent)
+
+            sent = ' {} {} '.format(i1, bos_tok) + c1 + ' {}'.format(eos_tok)
+            edited_sents_cot_1.append(sent)
+            sent = ' {} {} '.format(i1, bos_tok)
+            edited_sents_only_1.append(sent)
+            sent = ' {} {} '.format(i1, bos_tok) + c1 + ' {} '.format(eos_tok) + o1 + ' {}'.format(eos_tok)
+            edited_sents_all_1.append(sent)
+            sent = ' {} {} '.format(i1, bos_tok) + o1 + ' {}'.format(eos_tok)
+            edited_sents_nocot_1.append(sent)
+
+            sent = ' {} {} '.format(i2, bos_tok) + c2 + ' {}'.format(eos_tok)
+            edited_sents_cot_2.append(sent)
+            sent = ' {} {} '.format(i2, bos_tok)
+            edited_sents_only_2.append(sent)
+            sent = ' {} {} '.format(i2, bos_tok) + c2 + ' {} '.format(eos_tok) + o2 + ' {}'.format(eos_tok)
+            edited_sents_all_2.append(sent)
+            sent = ' {} {} '.format(i2, bos_tok) + o2 + ' {}'.format(eos_tok)
+            edited_sents_nocot_2.append(sent)
 
         batch_encoding_cot = tokenizer(edited_sents_cot, add_special_tokens=True, truncation=True, max_length=self.max_len)
         batch_encoding_only = tokenizer(edited_sents_only, add_special_tokens=True, truncation=True, max_length=self.max_len)
@@ -149,6 +192,34 @@ class DatasetHandler(Dataset):
         self.labels_all = copy.deepcopy(self.examples_all)
         self.labels_cot_shift = copy.deepcopy(self.examples_cot)
         self.labels_nocot = copy.deepcopy(self.examples_nocot)
+
+        batch_encoding_cot_1 = tokenizer(edited_sents_cot_1, add_special_tokens=True, truncation=True, max_length=self.max_len)
+        batch_encoding_only_1 = tokenizer(edited_sents_only_1, add_special_tokens=True, truncation=True, max_length=self.max_len)
+        batch_encoding_all_1 = tokenizer(edited_sents_all_1, add_special_tokens=True, truncation=True, max_length=self.max_len)
+        batch_encoding_nocot_1 = tokenizer(edited_sents_nocot_1, add_special_tokens=True, truncation=True, max_length=self.max_len)
+        self.examples_cot_1 = batch_encoding_cot_1["input_ids"]
+        self.examples_only_1 = batch_encoding_only_1["input_ids"]
+        self.examples_all_1 = batch_encoding_all_1["input_ids"]
+        self.examples_nocot_1 = batch_encoding_nocot_1["input_ids"]
+
+        self.labels_cot_1 = copy.deepcopy(self.examples_cot_1)
+        self.labels_all_1 = copy.deepcopy(self.examples_all_1)
+        self.labels_cot_shift_1 = copy.deepcopy(self.examples_cot_1)
+        self.labels_nocot_1 = copy.deepcopy(self.examples_nocot_1)
+
+        batch_encoding_cot_2 = tokenizer(edited_sents_cot_2, add_special_tokens=True, truncation=True, max_length=self.max_len)
+        batch_encoding_only_2 = tokenizer(edited_sents_only_2, add_special_tokens=True, truncation=True, max_length=self.max_len)
+        batch_encoding_all_2 = tokenizer(edited_sents_all_2, add_special_tokens=True, truncation=True, max_length=self.max_len)
+        batch_encoding_nocot_2 = tokenizer(edited_sents_nocot_2, add_special_tokens=True, truncation=True, max_length=self.max_len)
+        self.examples_cot_2 = batch_encoding_cot_2["input_ids"]
+        self.examples_only_2 = batch_encoding_only_2["input_ids"]
+        self.examples_all_2 = batch_encoding_all_2["input_ids"]
+        self.examples_nocot_2 = batch_encoding_nocot_2["input_ids"]
+
+        self.labels_cot_2 = copy.deepcopy(self.examples_cot_2)
+        self.labels_all_2 = copy.deepcopy(self.examples_all_2)
+        self.labels_cot_shift_2 = copy.deepcopy(self.examples_cot_2)
+        self.labels_nocot_2 = copy.deepcopy(self.examples_nocot_2)
 
         self.src_sent_cot = []
         self.tgt_sent_cot = []
@@ -169,6 +240,14 @@ class DatasetHandler(Dataset):
             temp_tgt_len += len(elem) - (sep_idx-1)
             temp_count += 1
 
+            self.labels_cot_1[i][:sep_idx] = [-100] * sep_idx
+            self.labels_all_1[i][:sep_idx] = [-100] * sep_idx
+            self.labels_cot_shift_1[i][:sep_idx-1] = [-100] * (sep_idx-1)
+            
+            self.labels_cot_2[i][:sep_idx] = [-100] * sep_idx
+            self.labels_all_2[i][:sep_idx] = [-100] * sep_idx
+            self.labels_cot_shift_2[i][:sep_idx-1] = [-100] * (sep_idx-1)
+
         print('tgt_avg: ', temp_tgt_len / temp_count)
         print('src_avg: ', temp_src_len / temp_count)
         print('ratios: ', temp_src_len/temp_tgt_len)
@@ -188,6 +267,9 @@ class DatasetHandler(Dataset):
             temp_tgt_len += len(elem) - (sep_idx-1)
             temp_count += 1
 
+            self.labels_nocot_1[i][:sep_idx] = [-100] * sep_idx
+            self.labels_nocot_2[i][:sep_idx] = [-100] * sep_idx
+
         print('tgt_avg: ', temp_tgt_len / temp_count)
         print('src_avg: ', temp_src_len / temp_count)
         print('ratios: ', temp_src_len/temp_tgt_len)
@@ -198,11 +280,14 @@ class DatasetHandler(Dataset):
         print(f"No CoT: {edited_sents_nocot[0]}")
         print(f"Only CoT: {edited_sents_cot[0]}")
         print(f"Product input: {edited_sents_only[0]}")
-        #print(f"{self.labels_cot[0]}")
-        #print(f"{self.labels_nocot[0]}")
-        #print(self.examples_nocot[0])
-        #print(self.src_sent_nocot[0])
-        #print(self.tgt_sent_nocot[0])
+        print(f"Full entry P1: {edited_sents_all_1[0]}")
+        print(f"No CoT P1: {edited_sents_nocot_1[0]}")
+        print(f"Only CoT P1: {edited_sents_cot_1[0]}")
+        print(f"Product input P1: {edited_sents_only_1[0]}")
+        print(f"Full entry P2: {edited_sents_all_2[0]}")
+        print(f"No CoT P2: {edited_sents_nocot_2[0]}")
+        print(f"Only CoT P2: {edited_sents_cot_2[0]}")
+        print(f"Product input P2: {edited_sents_only_2[0]}")
         print("---------------------------")
 
     def __len__(self):
@@ -222,6 +307,24 @@ class DatasetHandler(Dataset):
                 torch.tensor(self.examples_only[i], dtype=torch.long),
                 torch.tensor(self.examples_all[i], dtype=torch.long),
                 torch.tensor(self.labels_all[i], dtype=torch.long),
+
+                torch.tensor(self.examples_cot_1[i], dtype=torch.long),
+                torch.tensor(self.examples_nocot_1[i], dtype=torch.long),
+                torch.tensor(self.labels_cot_1[i], dtype=torch.long),
+                torch.tensor(self.labels_cot_shift_1[i], dtype=torch.long),
+                torch.tensor(self.labels_nocot_1[i], dtype=torch.long),
+                torch.tensor(self.examples_only_1[i], dtype=torch.long),
+                torch.tensor(self.examples_all_1[i], dtype=torch.long),
+                torch.tensor(self.labels_all_1[i], dtype=torch.long),
+
+                torch.tensor(self.examples_cot_2[i], dtype=torch.long),
+                torch.tensor(self.examples_nocot_2[i], dtype=torch.long),
+                torch.tensor(self.labels_cot_2[i], dtype=torch.long),
+                torch.tensor(self.labels_cot_shift_2[i], dtype=torch.long),
+                torch.tensor(self.labels_nocot_2[i], dtype=torch.long),
+                torch.tensor(self.examples_only_2[i], dtype=torch.long),
+                torch.tensor(self.examples_all_2[i], dtype=torch.long),
+                torch.tensor(self.labels_all_2[i], dtype=torch.long),
                 )
     
     def readDataset(self):
@@ -242,7 +345,8 @@ class CoTDataCollator:
 
     def __call__(self, examples):
         #import pdb; pdb.set_trace()
-        input_ids_cot, input_ids_nocot, labels_cot, labels_cot_shift, labels_nocot, src_cot, src_nocot, tgt_cot, tgt_nocot, input_ids_only, input_ids_all, labels_all = zip(*examples)
+        input_ids_cot, input_ids_nocot, labels_cot, labels_cot_shift, labels_nocot, src_cot, src_nocot, tgt_cot, tgt_nocot, input_ids_only, input_ids_all, labels_all, input_ids_cot_1, input_ids_nocot_1, labels_cot_1, labels_cot_shift_1, labels_nocot_1, input_ids_only_1, input_ids_all_1, labels_all_1, input_ids_cot_2, input_ids_nocot_2, labels_cot_2, labels_cot_shift_2, labels_nocot_2, input_ids_only_2, input_ids_all_2, labels_all_2 = zip(*examples)
+        
         input_ids_cot = self._tensorize_batch(input_ids_cot)
         input_ids_cot[input_ids_cot.lt(0)] = self.tokenizer.eos_token_id
         input_ids_only = self._tensorize_batch(input_ids_only)
@@ -255,7 +359,61 @@ class CoTDataCollator:
         labels_all = self._tensorize_batch(labels_all)
         labels_cot_shift = self._tensorize_batch(labels_cot_shift)
         labels_nocot = self._tensorize_batch(labels_nocot)
-        return {"input_ids_cot": input_ids_cot, "input_ids_nocot": input_ids_nocot, "labels_cot": labels_cot, "labels_cot_shift": labels_cot_shift, "labels_nocot": labels_nocot, 'input_ids_only': input_ids_only, 'input_ids_all': input_ids_all, 'labels_all': labels_all}
+
+        input_ids_cot_1 = self._tensorize_batch(input_ids_cot_1)
+        input_ids_cot_1[input_ids_cot_1.lt(0)] = self.tokenizer.eos_token_id
+        input_ids_only_1 = self._tensorize_batch(input_ids_only_1)
+        input_ids_only_1[input_ids_only_1.lt(0)] = self.tokenizer.eos_token_id
+        input_ids_all_1 = self._tensorize_batch(input_ids_all_1)
+        input_ids_all_1[input_ids_all_1.lt(0)] = self.tokenizer.eos_token_id
+        input_ids_nocot_1 = self._tensorize_batch(input_ids_nocot_1)
+        input_ids_nocot_1[input_ids_nocot_1.lt(0)] = self.tokenizer.eos_token_id
+        labels_cot_1 = self._tensorize_batch(labels_cot_1)
+        labels_all_1 = self._tensorize_batch(labels_all_1)
+        labels_cot_shift_1 = self._tensorize_batch(labels_cot_shift_1)
+        labels_nocot_1 = self._tensorize_batch(labels_nocot_1)
+
+        input_ids_cot_2 = self._tensorize_batch(input_ids_cot_2)
+        input_ids_cot_2[input_ids_cot_2.lt(0)] = self.tokenizer.eos_token_id
+        input_ids_only_2 = self._tensorize_batch(input_ids_only_2)
+        input_ids_only_2[input_ids_only_2.lt(0)] = self.tokenizer.eos_token_id
+        input_ids_all_2 = self._tensorize_batch(input_ids_all_2)
+        input_ids_all_2[input_ids_all_2.lt(0)] = self.tokenizer.eos_token_id
+        input_ids_nocot_2 = self._tensorize_batch(input_ids_nocot_2)
+        input_ids_nocot_2[input_ids_nocot_2.lt(0)] = self.tokenizer.eos_token_id
+        labels_cot_2 = self._tensorize_batch(labels_cot_2)
+        labels_all_2 = self._tensorize_batch(labels_all_2)
+        labels_cot_shift_2 = self._tensorize_batch(labels_cot_shift_2)
+        labels_nocot_2 = self._tensorize_batch(labels_nocot_2)
+
+        return {"input_ids_cot": input_ids_cot, 
+                "input_ids_nocot": input_ids_nocot, 
+                "labels_cot": labels_cot, 
+                "labels_cot_shift": labels_cot_shift, 
+                "labels_nocot": labels_nocot, 
+                'input_ids_only': input_ids_only, 
+                'input_ids_all': input_ids_all, 
+                'labels_all': labels_all,
+                
+                "input_ids_cot_1": input_ids_cot_1, 
+                "input_ids_nocot_1": input_ids_nocot_1, 
+                "labels_cot_1": labels_cot_1, 
+                "labels_cot_shift_1": labels_cot_shift_1, 
+                "labels_nocot_1": labels_nocot_1, 
+                'input_ids_only_1': input_ids_only_1, 
+                'input_ids_all_1': input_ids_all_1, 
+                'labels_all_1': labels_all_1,
+
+                "input_ids_cot_2": input_ids_cot_2, 
+                "input_ids_nocot_2": input_ids_nocot_2, 
+                "labels_cot_2": labels_cot_2, 
+                "labels_cot_shift_2": labels_cot_shift_2, 
+                "labels_nocot_2": labels_nocot_2, 
+                'input_ids_only_2': input_ids_only_2, 
+                'input_ids_all_2': input_ids_all_2, 
+                'labels_all_2': labels_all_2,
+                
+                }
 
     def _tensorize_batch(self, examples):
         # In order to accept both lists of lists and lists of Tensors

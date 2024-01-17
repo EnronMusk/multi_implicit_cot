@@ -46,8 +46,11 @@ class Teacher(nn.Module):
         self.num_layers = num_layers
         self.hidden_size = hidden_size
 
-    def forward(self, input_ids):
-        outputs = self.base_model.forward(input_ids=input_ids)
+        new_symbols = ['~', '@', '#']
+        self.tokenizer.add_tokens(new_symbols)
+
+    def forward(self, input_ids, output_hidden_states=False):
+        outputs = self.base_model.forward(input_ids=input_ids, output_hidden_states=output_hidden_states)
         return outputs
 
     def computePositionsToExtractPerLayer(self, subset, delta, first_sep_positions, second_sep_positions):
@@ -120,11 +123,12 @@ class Teacher(nn.Module):
         loss_fct = CrossEntropyLoss()
         loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
 
-        outputs.loss = loss
-        outputs.token_accuracy = token_accuracy
-        outputs.total_correct = correct_tokens
-        outputs.total_loss = loss * total_tokens
-        outputs.total_tokens = total_tokens
+        outputs = {
+            "loss": loss,
+            "token_accuracy": token_accuracy,
+            "total_tokens": total_tokens,
+            "total_correct_tokens": correct_tokens,
+        }
         return outputs
 
     def __generate(self, input_ids, max_new_tokens=512, num_beams=1, stop_on_two_eos=True) -> list:
@@ -193,26 +197,41 @@ class Teacher(nn.Module):
         total_loss = 0
         sub_iteration = 0
 
+        total_correct_1 = 0
+        total_correct_2 = 0
+
         for batch in tqdm.tqdm(dataloader):
-            input_ids_all = batch['input_ids_all'].to(device)
-            labels = batch['labels_all'].to(device)
+            input_ids_1 = batch['input_ids_all_1'].to(device)
+            labels_1 = batch['labels_all_1'].to(device)
+
+            input_ids_2 = batch['input_ids_all_2'].to(device)
+            labels_2 = batch['labels_all_2'].to(device)
+
             # Remove answer part
-            sep_positions = get_sep_position(input_ids_all, self.tokenizer.eos_token_id)
-            input_ids = input_ids_all[:, :sep_positions.max()+1]
-            batch_size = input_ids.shape[0]
+            sep_positions = get_sep_position(input_ids_1, self.tokenizer.eos_token_id)
+            input_ids_1g = input_ids_1[:, :sep_positions.max()+1]
+
+            sep_positions = get_sep_position(input_ids_2, self.tokenizer.eos_token_id)
+            input_ids_2g = input_ids_2[:, :sep_positions.max()+1]
+
+            batch_size = input_ids_1.shape[0]
             with ctx:
-                outputs = self.computeLoss(input_ids=input_ids_all, labels=labels)
-            total_loss += outputs.total_loss.item()
-            total_correct_tokens += outputs.total_correct.item()
-            total_tokens += outputs.total_tokens
+                outputs = self.computeLoss(input_ids_1, labels_1)
+            total_loss += outputs['loss'].item()
+            total_correct_tokens += outputs['total_correct_tokens'].item()
+            total_tokens += outputs['total_tokens']
             total_instances += batch_size
 
             # Generate
-            beam_output = self.__generate(
-                input_ids=input_ids,
+            beam_output_1 = self.__generate(
+                input_ids=input_ids_1g,
                 max_new_tokens=self.config.max_new_tokens,
             )
-            for i, (input_ids_all_i, beam_output_i) in enumerate(zip(input_ids_all, beam_output)):
+            beam_output_2 = self.__generate(
+                input_ids=input_ids_2g,
+                max_new_tokens=self.config.max_new_tokens,
+            )
+            for i, (input_ids_all_i, beam_output_i) in enumerate(zip(input_ids_1, beam_output_1)):
                 sub_iteration += 1
                 sep_position = sep_positions[i].item()
                 tgt = input_ids_all_i[sep_position+1:]
@@ -222,6 +241,7 @@ class Teacher(nn.Module):
                 pred_ans = extractAnswer(pred_text)
                 if ans == pred_ans:
                     total_correct += 1
+                    total_correct_1 += 1
 
                 if sub_iteration >= len(dataloader.dataset)-2: # to limit spam of prediction examples.
                     print (f'Input: {self.tokenizer.decode(input_ids_all_i[:sep_position], skip_special_tokens=True)}')
@@ -229,11 +249,22 @@ class Teacher(nn.Module):
                     print (f'Predicted: {pred_text}')
                     print ('')
 
-        accuracy = total_correct / total_instances
+            for i, (input_ids_all_i, beam_output_i) in enumerate(zip(input_ids_2, beam_output_2)):
+                sep_position = sep_positions[i].item()
+                tgt = input_ids_all_i[sep_position+1:]
+                tgt_text = self.tokenizer.decode(tgt, skip_special_tokens=True)
+                ans = extractAnswer(tgt_text)
+                pred_text = self.tokenizer.decode(beam_output_i[0][sep_position+1:], skip_special_tokens=True)
+                pred_ans = extractAnswer(pred_text)
+                if ans == pred_ans:
+                    total_correct += 1
+                    total_correct_2 += 1
+
+        accuracy = total_correct / (total_instances*2)
         token_accuracy = total_correct_tokens / total_tokens
         loss = total_loss / total_tokens
         ppl = math.exp(loss)
-        return accuracy, token_accuracy, ppl
+        return accuracy, token_accuracy, ppl, total_correct_1 / total_instances, total_correct_2 / total_instances
     
     def predict(self, custom_data_handler : DatasetHandler) -> None:
         '''
@@ -289,19 +320,32 @@ class Teacher(nn.Module):
             teacher.train()
         
 
-            input_ids = batch['input_ids_all'].to(device)
-            labels = batch['labels_all'].to(device)
+            input_ids_1 = batch['input_ids_all_1'].to(device)
+            labels_1 = batch['labels_all_1'].to(device)
+
+            input_ids_2 = batch['input_ids_all_2'].to(device)
+            labels_2 = batch['labels_all_2'].to(device)
+
             with ctx:
-                outputs = self.computeLoss(input_ids=input_ids, labels=labels)
-            loss = outputs.loss
-            token_accuracy = outputs.token_accuracy.item()
+                outputs = self.computeLoss(input_ids_1, labels_1)
+            loss = outputs['loss']
+            token_accuracy = outputs['token_accuracy'].item()
 
             #Stop training early to save resources.
             if token_accuracy > limit:
                 print(f"Accuracy limit reached, stopping training at training accuracy: {token_accuracy:.6f}.")
                 break
 
-            loss.backward() #Calculates graidents
+            loss.backward() #Calculates gradients
+            torch.nn.utils.clip_grad_norm_(trainable_params, self.config.max_grad_norm)
+            optimizer.step() #Subtracts gradients.
+            optimizer.zero_grad() #Set gradients to zero.
+
+            with ctx:
+                outputs = self.computeLoss(input_ids_2, labels_2)
+            loss = outputs['loss']
+
+            loss.backward() #Calculates gradients
             torch.nn.utils.clip_grad_norm_(trainable_params, self.config.max_grad_norm)
             optimizer.step() #Subtracts gradients.
             optimizer.zero_grad() #Set gradients to zero.
@@ -317,9 +361,9 @@ class Teacher(nn.Module):
             train_accs.append(token_accuracy)
             
         print (f"\u2714 Evaluating test dataset now...")
-        accuracy, token_accuracy, ppl = self.evaluate(val_dataloader, ctx)
+        accuracy, token_accuracy, ppl, accuracy_1, accuracy_2 = self.evaluate(val_dataloader, ctx)
 
-        print (f'\u2192 Perplexitity: {ppl:.6f}; Test Accuracy: {accuracy:.6f}; Training Accuracy: {token_accuracy:.6f}.')
+        print (f'\u2192 Perplexitity: {ppl:.6f}; Test Accuracy: {accuracy:.6f}; Training Accuracy: {token_accuracy:.6f}; P1 Test Accuracy {accuracy_1:.6f}; P2 Test Accuracy {accuracy_2:.6f}.')
         teacher.save_pretrained(os.path.join(train_handler.path+r'\models\teacher'))
 
         createAccuracyPlot(train_accs) #Plots the lsos and accuracy information over batches, so we can gage training performance.
