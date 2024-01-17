@@ -19,7 +19,7 @@ Dataset is dynamically generated and saved: [here](https://github.com/EnronMusk/
 
 Referenced paper: [here](https://arxiv.org/pdf/2311.01460.pdf)
 
-## **Results with shared states*
+## *Results with shared states*
 
 Used gpt-2 small (12 layers) and 777k training dataset and 77k test dataset:
 
@@ -30,7 +30,7 @@ Used gpt-2 small (12 layers) and 777k training dataset and 77k test dataset:
 |MindReadingEmulator|Perplexitity: 1.000601| Test Accuracy: 0.996688| Training Accuracy: 0.999745|
 |ImplicitStudent|Perplexitity: 1.000000| Test Accuracy: 1.000000| Training Accuracy: 1.000000|
 
-## **Results with simultaneous implicit inference* 
+## *Results with simultaneous implicit inference* 
 
 Used gpt-2 small (12 layers) and 777k training dataset and 77k test dataset:
 
