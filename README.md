@@ -1,4 +1,4 @@
-## **Research Credit** [here](https://arxiv.org/pdf/2311.01460.pdf)
+## Research credit is not my own and belongs [here](https://arxiv.org/pdf/2311.01460.pdf)
 
 **Model demo** notebook is stored with instructions and visuals: [here](https://github.com/EnronMusk/multi_implicit_cot/blob/main/demo/model_demo.ipynb)
 
