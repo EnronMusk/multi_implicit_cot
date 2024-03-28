@@ -1,3 +1,5 @@
+**Research Credit** [here](https://arxiv.org/pdf/2311.01460.pdf)
+
 **Model demo** notebook is stored with instructions and visuals: [here](https://github.com/EnronMusk/multi_implicit_cot/blob/main/demo/model_demo.ipynb)
 
 Simply run the notebook to explore results. The notebook does request user input for a custom prediction, but otherwise its fully automated.
