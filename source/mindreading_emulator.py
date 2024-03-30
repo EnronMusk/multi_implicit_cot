@@ -142,10 +142,22 @@ class MindReadingEmulator(nn.Module):
             input_ids_nocot = batch['input_ids_nocot'].to(device)
             labels_nocot = batch['labels_nocot'].to(device)
 
+            input_ids_nocot_1  = batch['input_ids_nocot_1'].to(device)
+            labels_nocot_2  = batch['labels_nocot_1'].to(device)
+
+            input_ids_nocot_2  = batch['input_ids_nocot_2'].to(device)
+            labels_nocot_2 = batch['labels_nocot_2'].to(device)
+
             batch_size = input_ids_nocot.shape[0]
             with ctx:
-                teacher_states = self.teacher.extractStates(input_ids=input_ids_all, delta=self.config.delta, subset=self.config.subset)
-                outputs = self.computeLoss(input_ids=input_ids_nocot, labels=labels_nocot, teacher_states=teacher_states)
+                teacher_states_1 = self.teacher.extractStates(input_ids=input_ids_nocot_1, delta=self.config.delta, subset=self.config.subset)
+                teacher_states_2 = self.teacher.extractStates(input_ids=input_ids_nocot_2, delta=self.config.delta, subset=self.config.subset)
+
+                teacher_states_total = []
+                for i in range(len(teacher_states_1)):
+                    teacher_states_total.append(teacher_states_1[i]+teacher_states_2[i])
+
+                outputs = self.computeLoss(input_ids=input_ids_nocot, labels=labels_nocot, teacher_states=teacher_states_total)
                 loss = outputs.loss
                 token_accuracy = outputs.token_accuracy.item()
             total_loss += outputs.total_loss.item()
@@ -157,7 +169,7 @@ class MindReadingEmulator(nn.Module):
             with ctx:
                 beam_output = self.generate(
                     input_ids=input_ids_nocot,
-                    teacher_states=teacher_states,
+                    teacher_states=teacher_states_total,
                     max_new_tokens=self.config.max_new_tokens,
                 )
 
@@ -174,8 +186,8 @@ class MindReadingEmulator(nn.Module):
                 if ans == pred_ans:
                     total_correct += 1
                 if sub_iteration >= len(dataloader.dataset)-2: # to limit spam of prediction examples.
-                    print (f'Input Layer 1, Attention Head 1, first 9 states:')
-                    print(np.round(teacher_states[0][0][:9].cpu().numpy(), decimals=4))
+                    print (f'Input Diagonal, first 9 states:')
+                    print(np.round(teacher_states_total[0][0][:9].cpu().numpy(), decimals=4))
                     print (f'Target: {tgt_text}')
                     print (f'Predicted: {pred_text}')
                     print ('')
@@ -244,10 +256,22 @@ class MindReadingEmulator(nn.Module):
             input_ids_all = batch['input_ids_all'].to(device)
             input_w_nocot = batch['input_ids_nocot'].to(device)
             labels_w_nocot = batch['labels_nocot'].to(device)
+
+            input_ids_nocot_1  = batch['input_ids_nocot_1'].to(device)
+            labels_nocot_2  = batch['labels_nocot_1'].to(device)
+
+            input_ids_nocot_2  = batch['input_ids_nocot_2'].to(device)
+            labels_nocot_2 = batch['labels_nocot_2'].to(device)
+
             with ctx:
                 with torch.no_grad():
-                    teacher_states = self.teacher.extractStates(input_ids=input_ids_all, delta=self.config.delta, subset=self.config.subset)
-                outputs = self.computeLoss(input_ids=input_w_nocot, labels=labels_w_nocot, teacher_states=teacher_states)
+                    teacher_states_1 = self.teacher.extractStates(input_ids=input_ids_nocot_1, delta=self.config.delta, subset=self.config.subset)
+                    teacher_states_2 = self.teacher.extractStates(input_ids=input_ids_nocot_2, delta=self.config.delta, subset=self.config.subset)
+
+                    teacher_states_total = []
+                    for i in range(len(teacher_states_1)):
+                        teacher_states_total.append(teacher_states_1[i]+teacher_states_2[i])
+                outputs = self.computeLoss(input_ids=input_w_nocot, labels=labels_w_nocot, teacher_states=teacher_states_total)
             loss = outputs.loss
             token_accuracy = outputs.token_accuracy.item()
 
