@@ -1,3 +1,5 @@
+## Research credit is not my own and belongs [here](https://arxiv.org/pdf/2311.01460.pdf)
+
 **Model demo** notebook is stored with instructions and visuals: [here](https://github.com/EnronMusk/multi_implicit_cot/blob/main/demo/model_demo.ipynb)
 
 Simply run the notebook to explore results. The notebook does request user input for a custom prediction, but otherwise its fully automated.
@@ -19,7 +21,7 @@ Dataset is dynamically generated and saved: [here](https://github.com/EnronMusk/
 
 Referenced paper: [here](https://arxiv.org/pdf/2311.01460.pdf)
 
-## **Results** 
+## *Results with shared states*
 
 Used gpt-2 small (12 layers) and 777k training dataset and 77k test dataset:
 
@@ -29,6 +31,17 @@ Used gpt-2 small (12 layers) and 777k training dataset and 77k test dataset:
 |ThoughtEmulator|Loss: 4.369609| Quasi Test Accuracy 0.977900| Quasi Training Accuracy: 0.977773|
 |MindReadingEmulator|Perplexitity: 1.000601| Test Accuracy: 0.996688| Training Accuracy: 0.999745|
 |ImplicitStudent|Perplexitity: 1.000000| Test Accuracy: 1.000000| Training Accuracy: 1.000000|
+
+## *Results with simultaneous implicit inference* 
+
+Used gpt-2 small (12 layers) and 777k training dataset and 77k test dataset:
+
+|**Model** |**Loss** | **Test** | **Train**|
+|----------|----------|----------|----------|
+|Teacher|Perplexitity: 1.000000| Test Accuracy: 0.998857| Training Accuracy: 0.999954|
+|ThoughtEmulator|Loss: 613.826971| Quasi Test Accuracy 0.759698| Quasi Training Accuracy: 0.653752|
+|MindReadingEmulator|Perplexitity: 1.012221| Test Accuracy: 0.931091| Training Accuracy: 0.994157|
+|ImplicitStudent|Perplexitity: 1.003074| Test Accuracy: 0.988571| Training Accuracy: 0.999043|
 
 ## **Notes** 
 
